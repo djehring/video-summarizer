@@ -66,6 +66,7 @@ export async function submitVideo(url: string): Promise<JobResponse> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
+    credentials: 'include',
   });
   if (!response.ok) {
     throw new Error('Failed to submit video');
@@ -74,7 +75,9 @@ export async function submitVideo(url: string): Promise<JobResponse> {
 }
 
 export async function getJobStatus(jobId: string): Promise<JobResponse> {
-  const response = await fetch(`${API_BASE}/videos/${jobId}`);
+  const response = await fetch(`${API_BASE}/videos/${jobId}`, {
+    credentials: 'include',
+  });
   if (!response.ok) {
     throw new Error('Failed to get job status');
   }
@@ -118,6 +121,7 @@ export async function generateSummary(jobId: string): Promise<string> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ job_id: jobId }),
+    credentials: 'include',
   });
   if (!response.ok) {
     const error = await response.json();
@@ -136,6 +140,7 @@ export async function sendChatMessage(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ job_id: jobId, message, history }),
+    credentials: 'include',
   });
   if (!response.ok) {
     const error = await response.json();
