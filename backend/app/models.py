@@ -28,7 +28,8 @@ class References(BaseModel):
     books: list[str] = []
     organizations: list[str] = []
     terms: list[str] = []
-    urls: list[str] = []
+    paper_links: list[str] = []  # PubMed, DOI, PMC, academic paper URLs
+    urls: list[str] = []  # Other URLs
 
 
 class VideoAnalysis(BaseModel):

@@ -123,7 +123,8 @@ export function SummaryView({ analysis }: SummaryViewProps) {
         <ReferenceSection title="Books" items={references.books} icon="📖" type="books" />
         <ReferenceSection title="Organizations" items={references.organizations} icon="🏛️" type="organizations" />
         <ReferenceSection title="Scientific Terms" items={references.terms} icon="🔬" type="terms" />
-        <ReferenceSection title="URLs" items={references.urls} icon="🔗" type="urls" />
+        <ReferenceSection title="Research Papers" items={references.paper_links || []} icon="📄" type="urls" />
+        <ReferenceSection title="Other Links" items={references.urls} icon="🔗" type="urls" />
       </div>
 
       {/* LLM Prompt */}

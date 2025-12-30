@@ -14,6 +14,7 @@ export interface References {
   books: string[];
   organizations: string[];
   terms: string[];
+  paper_links: string[];
   urls: string[];
 }
 

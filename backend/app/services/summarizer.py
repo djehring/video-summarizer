@@ -172,9 +172,52 @@ class VideoSummarizer:
                     if clean not in refs.organizations:
                         refs.organizations.append(clean)
 
-        # URLs from description
+        # URLs from description - separate paper links from other URLs
         url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
-        refs.urls = list(set(re.findall(url_pattern, description)))[:20]
+        all_urls = list(set(re.findall(url_pattern, description)))
+
+        # Academic/paper URL patterns
+        paper_domains = [
+            'pubmed.ncbi.nlm.nih.gov',
+            'ncbi.nlm.nih.gov/pmc',
+            'ncbi.nlm.nih.gov/pubmed',
+            'doi.org',
+            'dx.doi.org',
+            'sciencedirect.com',
+            'nature.com/articles',
+            'cell.com/cell',
+            'science.org',
+            'thelancet.com',
+            'jamanetwork.com',
+            'bmj.com',
+            'nejm.org',
+            'pnas.org',
+            'frontiersin.org',
+            'mdpi.com',
+            'springer.com',
+            'wiley.com',
+            'tandfonline.com',
+            'journals.plos.org',
+            'biorxiv.org',
+            'medrxiv.org',
+            'arxiv.org',
+            'europepmc.org',
+            'scholar.google.com',
+            'researchgate.net/publication',
+        ]
+
+        for url in all_urls:
+            is_paper = any(domain in url.lower() for domain in paper_domains)
+            if is_paper:
+                if url not in refs.paper_links:
+                    refs.paper_links.append(url)
+            else:
+                if url not in refs.urls:
+                    refs.urls.append(url)
+
+        # Limit results
+        refs.paper_links = refs.paper_links[:20]
+        refs.urls = refs.urls[:20]
 
         # Scientific terms
         term_patterns = [
