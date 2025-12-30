@@ -99,7 +99,16 @@ export function ChatPanel({ jobId, videoTitle }: ChatPanelProps) {
               >
                 {msg.role === 'assistant' ? (
                   <div className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-li:text-gray-700 prose-table:text-sm">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        a: ({ href, children }) => (
+                          <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                            {children}
+                          </a>
+                        )
+                      }}
+                    >
                       {msg.content}
                     </ReactMarkdown>
                   </div>
