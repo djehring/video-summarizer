@@ -28,7 +28,7 @@ Extract transcripts from YouTube videos and generate summaries with annotated re
 ```bash
 docker-compose up --build
 ```
-Then open http://localhost:3000
+Then open http://localhost:3008
 
 ### Local Development
 ```bash

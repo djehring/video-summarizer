@@ -10,7 +10,7 @@ Video Summarizer extracts transcripts from YouTube videos and generates summarie
 
 ```bash
 # Docker (full stack)
-docker-compose up --build           # http://localhost:3000
+docker-compose up --build           # http://localhost:3008
 
 # Backend development
 cd backend && uvicorn app.main:app --reload   # http://localhost:8000
