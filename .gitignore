@@ -50,6 +50,10 @@ frontend/dist/
 # Environment files
 .env
 *.env.local
+.mcp.json
+
+# Playwright
+.playwright-mcp/
 
 # OS
 .DS_Store
