@@ -2,6 +2,31 @@
 const API_BASE = import.meta.env.VITE_API_BASE
   || (import.meta.env.DEV ? 'http://localhost:8000/api' : '/api');
 
+// Token storage for mobile browsers (localStorage fallback for cross-site cookie issues)
+const AUTH_TOKEN_KEY = 'video_summariser_auth_token';
+
+export function getStoredToken(): string | null {
+  return localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+export function setStoredToken(token: string): void {
+  localStorage.setItem(AUTH_TOKEN_KEY, token);
+}
+
+export function clearStoredToken(): void {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+// Helper to get auth headers
+function getAuthHeaders(): HeadersInit {
+  const token = getStoredToken();
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 // Auth types and functions
 export interface User {
   email: string;
@@ -9,10 +34,24 @@ export interface User {
   picture: string;
 }
 
+export async function exchangeAuthToken(token: string): Promise<{ token: string; user: User }> {
+  const response = await fetch(`${API_BASE}/auth/exchange-token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to exchange token');
+  }
+  return response.json();
+}
+
 export async function getCurrentUser(): Promise<User | null> {
   try {
     const response = await fetch(`${API_BASE}/auth/me`, {
       credentials: 'include',
+      headers: getAuthHeaders(),
     });
     if (!response.ok) return null;
     return response.json();
@@ -64,7 +103,7 @@ export interface JobResponse {
 export async function submitVideo(url: string): Promise<JobResponse> {
   const response = await fetch(`${API_BASE}/videos/analyze`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ url }),
     credentials: 'include',
   });
@@ -77,6 +116,7 @@ export async function submitVideo(url: string): Promise<JobResponse> {
 export async function getJobStatus(jobId: string): Promise<JobResponse> {
   const response = await fetch(`${API_BASE}/videos/${jobId}`, {
     credentials: 'include',
+    headers: getAuthHeaders(),
   });
   if (!response.ok) {
     throw new Error('Failed to get job status');
@@ -119,7 +159,7 @@ export interface ChatMessage {
 export async function generateSummary(jobId: string): Promise<string> {
   const response = await fetch(`${API_BASE}/chat/summarize`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ job_id: jobId }),
     credentials: 'include',
   });
@@ -138,7 +178,7 @@ export async function sendChatMessage(
 ): Promise<string> {
   const response = await fetch(`${API_BASE}/chat/message`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ job_id: jobId, message, history }),
     credentials: 'include',
   });

@@ -8,6 +8,9 @@ import {
   getCurrentUser,
   getLoginUrl,
   getLogoutUrl,
+  exchangeAuthToken,
+  setStoredToken,
+  clearStoredToken,
   type VideoAnalysis,
   type User
 } from './api/client';
@@ -25,10 +28,32 @@ function App() {
   // Check auth state on mount
   useEffect(() => {
     const checkAuth = async () => {
-      // Check for auth error in URL
       const params = new URLSearchParams(window.location.search);
+
+      // Check for auth error in URL
       if (params.get('error') === 'not_authorized') {
         setAuthError('Your email is not on the allowed users list.');
+        window.history.replaceState({}, '', window.location.pathname);
+        setAuthLoading(false);
+        return;
+      }
+
+      // Check for auth token in URL (mobile browsers with blocked cookies)
+      const authToken = params.get('auth_token');
+      if (authToken) {
+        try {
+          const result = await exchangeAuthToken(authToken);
+          setStoredToken(result.token);
+          setUser(result.user);
+          // Clear token from URL
+          window.history.replaceState({}, '', window.location.pathname);
+          setAuthLoading(false);
+          return;
+        } catch {
+          // Token exchange failed, fall through to normal auth check
+          console.error('Token exchange failed');
+        }
+        // Clear invalid token from URL
         window.history.replaceState({}, '', window.location.pathname);
       }
 
@@ -132,6 +157,7 @@ function App() {
             <span className="text-sm text-gray-600 hidden sm:inline">{user.email}</span>
             <a
               href={getLogoutUrl()}
+              onClick={() => clearStoredToken()}
               className="text-sm text-gray-500 hover:text-gray-700"
             >
               Logout
