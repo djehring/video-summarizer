@@ -1,5 +1,2 @@
-[build]
-dockerfilePath = "Dockerfile"
-
 [build.args]
 VITE_API_BASE = "${{VITE_API_BASE}}"
