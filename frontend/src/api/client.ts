@@ -76,3 +76,41 @@ export async function pollUntilComplete(
     poll();
   });
 }
+
+// Chat API
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export async function generateSummary(jobId: string): Promise<string> {
+  const response = await fetch(`${API_BASE}/chat/summarize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ job_id: jobId }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to generate summary');
+  }
+  const data = await response.json();
+  return data.summary;
+}
+
+export async function sendChatMessage(
+  jobId: string,
+  message: string,
+  history: ChatMessage[]
+): Promise<string> {
+  const response = await fetch(`${API_BASE}/chat/message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ job_id: jobId, message, history }),
+  });
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to send message');
+  }
+  const data = await response.json();
+  return data.response;
+}

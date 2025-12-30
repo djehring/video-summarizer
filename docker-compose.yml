@@ -5,6 +5,8 @@ services:
       - "8000:8000"
     volumes:
       - video-data:/tmp/video-summarizer
+    env_file:
+      - ./backend/.env
     environment:
       - PYTHONUNBUFFERED=1
 

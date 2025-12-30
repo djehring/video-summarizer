@@ -43,3 +43,26 @@ class JobResponse(BaseModel):
     status: JobStatus
     error: Optional[str] = None
     result: Optional[VideoAnalysis] = None
+
+
+class ChatMessage(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
+
+class ChatRequest(BaseModel):
+    job_id: str
+    message: str
+    history: list[ChatMessage] = []
+
+
+class ChatResponse(BaseModel):
+    response: str
+
+
+class SummarizeRequest(BaseModel):
+    job_id: str
+
+
+class SummarizeResponse(BaseModel):
+    summary: str

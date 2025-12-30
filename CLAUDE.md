@@ -27,26 +27,37 @@ cd frontend && npm run dev          # http://localhost:5173
 ```
 video-summarizer/
 ├── backend/                    # FastAPI backend
+│   ├── .env                    # OPENAI_API_KEY, OPENAI_MODEL (gitignored)
 │   └── app/
 │       ├── main.py             # FastAPI app, CORS config
 │       ├── models.py           # Pydantic schemas
-│       ├── routers/videos.py   # POST /api/videos/analyze, GET /api/videos/{job_id}
-│       └── services/summarizer.py  # Core VideoSummarizer logic
+│       ├── routers/
+│       │   ├── videos.py       # /api/videos endpoints
+│       │   └── chat.py         # /api/chat endpoints (AI)
+│       └── services/
+│           ├── summarizer.py   # Core VideoSummarizer logic
+│           └── ai_agent.py     # OpenAI integration
 ├── frontend/                   # React + Vite + Tailwind
 │   └── src/
 │       ├── App.tsx             # Main app with state management
-│       ├── api/client.ts       # API client with polling
+│       ├── api/client.ts       # API client with polling + chat
 │       └── components/
 │           ├── VideoForm.tsx   # URL input form
-│           └── SummaryView.tsx # Results display
+│           ├── SummaryView.tsx # Results display
+│           └── ChatPanel.tsx   # AI chat interface
 ├── summarize_video.py          # Original CLI tool
 └── docker-compose.yml
 ```
 
 ## API
 
+**Videos:**
 - `POST /api/videos/analyze` - Submit URL, returns `{ job_id, status }`
 - `GET /api/videos/{job_id}` - Poll for results (pending → processing → completed/failed)
+
+**Chat (requires OPENAI_API_KEY):**
+- `POST /api/chat/summarize` - Generate AI summary of video
+- `POST /api/chat/message` - Chat about the video with conversation history
 
 Jobs run in background (yt-dlp takes 10-30s). Frontend polls until complete.
 

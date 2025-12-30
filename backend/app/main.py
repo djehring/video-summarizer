@@ -1,7 +1,11 @@
+import os
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import videos
+from app.routers import videos, chat
+
+load_dotenv()
 
 app = FastAPI(
     title="Video Summarizer API",
@@ -18,6 +22,7 @@ app.add_middleware(
 )
 
 app.include_router(videos.router, prefix="/api/videos", tags=["videos"])
+app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 
 
 @app.get("/health")

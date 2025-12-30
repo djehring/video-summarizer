@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { VideoForm } from './components/VideoForm';
 import { SummaryView } from './components/SummaryView';
+import { ChatPanel } from './components/ChatPanel';
 import { submitVideo, pollUntilComplete, type VideoAnalysis } from './api/client';
 
 function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState<string>();
+  const [jobId, setJobId] = useState<string>();
   const [analysis, setAnalysis] = useState<VideoAnalysis>();
   const [error, setError] = useState<string>();
 
@@ -14,9 +16,11 @@ function App() {
     setStatus('Submitting...');
     setError(undefined);
     setAnalysis(undefined);
+    setJobId(undefined);
 
     try {
       const job = await submitVideo(url);
+      setJobId(job.job_id);
       setStatus('Processing video...');
 
       const result = await pollUntilComplete(job.job_id, (j) => {
@@ -39,7 +43,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-100 py-8 px-4">
-      <div className="max-w-4xl mx-auto space-y-8">
+      <div className="max-w-6xl mx-auto space-y-8">
         <header className="text-center">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             Video Summarizer
@@ -59,7 +63,16 @@ function App() {
           </div>
         )}
 
-        {analysis && <SummaryView analysis={analysis} />}
+        {analysis && jobId && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-6">
+              <SummaryView analysis={analysis} />
+            </div>
+            <div className="lg:sticky lg:top-8 lg:self-start">
+              <ChatPanel jobId={jobId} videoTitle={analysis.video.title} />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
