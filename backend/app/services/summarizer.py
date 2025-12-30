@@ -96,16 +96,25 @@ class VideoSummarizer:
         refs = References()
         combined_text = transcript + "\n" + description
 
-        # Studies/papers
+        # Studies/papers - require full journal names or specific context
         study_patterns = [
-            r'(?:study|paper|research|publication|journal|published in)\s+(?:in\s+)?([A-Z][^.,]+(?:Communications|Journal|Nature|Science|JAMA|Lancet|BMJ|Cell|PNAS)[^.]*)',
-            r'(Nature\s+Communications|Nature\s+Medicine|JAMA|The\s+Lancet|BMJ|Cell|Science|PNAS)[^.]*',
-            r'(?:UK\s+)?[Bb]io\s*[Bb]ank',
-            r'NHANES',
+            r'(?:study|paper|research|publication|journal|published in)\s+(?:in\s+)?([A-Z][^.,]+(?:Communications|Journal)[^.]*)',
+            r'(Nature\s+(?:Communications|Medicine|Neuroscience|Genetics|Reviews))',
+            r'(Cell\s+(?:Metabolism|Reports|Host|Stem Cell))',
+            r'(Science\s+(?:Advances|Translational Medicine|Immunology))',
+            r'(The\s+Lancet|Lancet\s+\w+)',
+            r'(JAMA\s+\w+|JAMA\s+Internal\s+Medicine)',
+            r'(British\s+Medical\s+Journal|BMJ\s+\w+)',
+            r'(PNAS|Proceedings\s+of\s+the\s+National\s+Academy)',
+            r'(New\s+England\s+Journal\s+of\s+Medicine|NEJM)',
+            r'(UK\s+Biobank|Biobank)',
+            r'(NHANES)',
+            r'(Framingham\s+Heart\s+Study)',
+            r'(Nurses\'\s+Health\s+Study)',
         ]
         for pattern in study_patterns:
-            for match in re.findall(pattern, combined_text, re.IGNORECASE):
-                if isinstance(match, str) and len(match) > 3:
+            for match in re.findall(pattern, combined_text):
+                if isinstance(match, str) and len(match) > 5:
                     clean = match.strip()
                     if clean not in refs.studies:
                         refs.studies.append(clean)
@@ -135,12 +144,28 @@ class VideoSummarizer:
                     if clean not in refs.books:
                         refs.books.append(clean)
 
-        # Organizations
-        org_patterns = [
-            r'(World\s+Health\s+Organization|WHO|CDC|NIH|FDA|American\s+Heart\s+Association|AHA)',
-            r'(UK\s+[Bb]io\s*[Bb]ank|Biobank)',
+        # Organizations - case-sensitive for acronyms to avoid false positives
+        org_patterns_case_sensitive = [
+            r'(WHO|CDC|NIH|FDA|AHA|EPA|USDA)',  # Only match uppercase acronyms
         ]
-        for pattern in org_patterns:
+        org_patterns_case_insensitive = [
+            r'(World\s+Health\s+Organization)',
+            r'(Centers\s+for\s+Disease\s+Control)',
+            r'(National\s+Institutes\s+of\s+Health)',
+            r'(Food\s+and\s+Drug\s+Administration)',
+            r'(American\s+Heart\s+Association)',
+            r'(American\s+College\s+of\s+(?:Cardiology|Sports\s+Medicine))',
+            r'(Harvard\s+(?:Medical\s+School|University))',
+            r'(Stanford\s+(?:University|Medical))',
+            r'(Mayo\s+Clinic)',
+        ]
+        for pattern in org_patterns_case_sensitive:
+            for match in re.findall(pattern, combined_text):
+                if isinstance(match, str) and len(match) > 2:
+                    clean = match.strip()
+                    if clean not in refs.organizations:
+                        refs.organizations.append(clean)
+        for pattern in org_patterns_case_insensitive:
             for match in re.findall(pattern, combined_text, re.IGNORECASE):
                 if isinstance(match, str) and len(match) > 2:
                     clean = match.strip()
