@@ -14,7 +14,29 @@ function formatDuration(seconds: number): string {
   return `${minutes}m`;
 }
 
-function ReferenceSection({ title, items, icon }: { title: string; items: string[]; icon: string }) {
+function isUrl(str: string): boolean {
+  return str.startsWith('http://') || str.startsWith('https://');
+}
+
+function getSearchUrl(item: string, type: string): string {
+  const query = encodeURIComponent(item);
+  switch (type) {
+    case 'studies':
+      return `https://scholar.google.com/scholar?q=${query}`;
+    case 'people':
+      return `https://www.google.com/search?q=${query}`;
+    case 'books':
+      return `https://www.google.com/search?q=${query}+book`;
+    case 'organizations':
+      return `https://www.google.com/search?q=${query}`;
+    case 'terms':
+      return `https://www.google.com/search?q=${query}+definition`;
+    default:
+      return `https://www.google.com/search?q=${query}`;
+  }
+}
+
+function ReferenceSection({ title, items, icon, type }: { title: string; items: string[]; icon: string; type: string }) {
   const [isOpen, setIsOpen] = useState(true);
 
   if (items.length === 0) return null;
@@ -34,7 +56,26 @@ function ReferenceSection({ title, items, icon }: { title: string; items: string
         <ul className="px-4 py-3 space-y-1">
           {items.map((item, i) => (
             <li key={i} className="text-gray-600">
-              • {item}
+              •{' '}
+              {isUrl(item) ? (
+                <a
+                  href={item}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline break-all"
+                >
+                  {item}
+                </a>
+              ) : (
+                <a
+                  href={getSearchUrl(item, type)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
+                  {item}
+                </a>
+              )}
             </li>
           ))}
         </ul>
@@ -77,12 +118,12 @@ export function SummaryView({ analysis }: SummaryViewProps) {
       {/* References */}
       <div className="space-y-3">
         <h3 className="text-lg font-semibold text-gray-800">Extracted References</h3>
-        <ReferenceSection title="Studies & Papers" items={references.studies} icon="📚" />
-        <ReferenceSection title="People Mentioned" items={references.people} icon="👤" />
-        <ReferenceSection title="Books" items={references.books} icon="📖" />
-        <ReferenceSection title="Organizations" items={references.organizations} icon="🏛️" />
-        <ReferenceSection title="Scientific Terms" items={references.terms} icon="🔬" />
-        <ReferenceSection title="URLs" items={references.urls} icon="🔗" />
+        <ReferenceSection title="Studies & Papers" items={references.studies} icon="📚" type="studies" />
+        <ReferenceSection title="People Mentioned" items={references.people} icon="👤" type="people" />
+        <ReferenceSection title="Books" items={references.books} icon="📖" type="books" />
+        <ReferenceSection title="Organizations" items={references.organizations} icon="🏛️" type="organizations" />
+        <ReferenceSection title="Scientific Terms" items={references.terms} icon="🔬" type="terms" />
+        <ReferenceSection title="URLs" items={references.urls} icon="🔗" type="urls" />
       </div>
 
       {/* LLM Prompt */}
