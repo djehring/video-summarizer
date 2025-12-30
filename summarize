@@ -1,0 +1,6 @@
+#!/bin/bash
+# Quick video summarizer - extracts transcript and references from YouTube videos
+# Usage: ./summarize <youtube_url>
+
+cd "$(dirname "$0")"
+python3 summarize_video.py "$@"
