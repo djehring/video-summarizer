@@ -47,6 +47,11 @@ async def auth_callback(request: Request):
     email = user_info.get('email', '').lower()
     allowed_users = get_allowed_users()
 
+    # Debug logging
+    print(f"[AUTH] Email from Google: '{email}'")
+    print(f"[AUTH] Allowed users: {allowed_users}")
+    print(f"[AUTH] Email in allowed: {email in allowed_users}")
+
     if allowed_users and email not in allowed_users:
         # Clear any session and redirect with error
         request.session.clear()
