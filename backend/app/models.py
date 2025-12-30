@@ -1,0 +1,45 @@
+from pydantic import BaseModel
+from typing import Optional
+from enum import Enum
+
+
+class JobStatus(str, Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class VideoRequest(BaseModel):
+    url: str
+
+
+class VideoMetadata(BaseModel):
+    video_id: str
+    title: str
+    channel: str
+    duration: int
+    url: str
+
+
+class References(BaseModel):
+    studies: list[str] = []
+    people: list[str] = []
+    books: list[str] = []
+    organizations: list[str] = []
+    terms: list[str] = []
+    urls: list[str] = []
+
+
+class VideoAnalysis(BaseModel):
+    video: VideoMetadata
+    references: References
+    transcript: str
+    llm_prompt: str
+
+
+class JobResponse(BaseModel):
+    job_id: str
+    status: JobStatus
+    error: Optional[str] = None
+    result: Optional[VideoAnalysis] = None

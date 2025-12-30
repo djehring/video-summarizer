@@ -1,0 +1,245 @@
+import subprocess
+import re
+import json
+import tempfile
+from pathlib import Path
+
+from app.models import VideoMetadata, References, VideoAnalysis
+
+
+class VideoSummarizer:
+    def __init__(self):
+        self.temp_dir = Path(tempfile.gettempdir()) / "video-summarizer"
+        self.temp_dir.mkdir(exist_ok=True)
+
+    def extract_video_id(self, url: str) -> str | None:
+        """Extract YouTube video ID from URL."""
+        patterns = [
+            r'(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)',
+            r'youtube\.com\/shorts\/([^&\n?#]+)',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+        return None
+
+    def download_subtitles(self, url: str) -> dict:
+        """Download subtitles and video metadata using yt-dlp."""
+        video_id = self.extract_video_id(url)
+        if not video_id:
+            raise ValueError(f"Could not extract video ID from URL: {url}")
+
+        # Get video info
+        info_cmd = ["yt-dlp", "--dump-json", "--skip-download", url]
+        result = subprocess.run(info_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"Failed to get video info: {result.stderr}")
+
+        video_info = json.loads(result.stdout)
+
+        # Download subtitles
+        subtitle_path = self.temp_dir / f"{video_id}"
+        sub_cmd = [
+            "yt-dlp",
+            "--write-auto-sub",
+            "--sub-lang", "en",
+            "--skip-download",
+            "-o", str(subtitle_path),
+            url
+        ]
+        subprocess.run(sub_cmd, capture_output=True, text=True)
+
+        # Find the subtitle file
+        vtt_files = list(self.temp_dir.glob(f"{video_id}*.vtt"))
+        if not vtt_files:
+            raise RuntimeError("No subtitle file found. Video may not have captions.")
+
+        return {
+            "video_id": video_id,
+            "title": video_info.get("title", "Unknown"),
+            "channel": video_info.get("channel", "Unknown"),
+            "duration": video_info.get("duration", 0),
+            "description": video_info.get("description", ""),
+            "url": url,
+            "subtitle_file": vtt_files[0]
+        }
+
+    def parse_vtt(self, vtt_path: Path) -> str:
+        """Parse VTT file to extract clean transcript."""
+        with open(vtt_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        lines = content.split('\n')
+        seen_text = set()
+        segments = []
+
+        for line in lines:
+            if line.startswith('WEBVTT') or line.startswith('Kind:') or line.startswith('Language:'):
+                continue
+            if '-->' in line:
+                continue
+            if not line.strip() or 'align:' in line or 'position:' in line:
+                continue
+
+            clean = re.sub(r'<[^>]+>', '', line).strip()
+            clean = clean.replace('&gt;&gt;', '>>').replace('&amp;', '&')
+
+            if clean and clean not in seen_text:
+                seen_text.add(clean)
+                segments.append(clean)
+
+        return ' '.join(segments)
+
+    def extract_references(self, transcript: str, description: str = "") -> References:
+        """Extract and categorize references from transcript and description."""
+        refs = References()
+        combined_text = transcript + "\n" + description
+
+        # Studies/papers
+        study_patterns = [
+            r'(?:study|paper|research|publication|journal|published in)\s+(?:in\s+)?([A-Z][^.,]+(?:Communications|Journal|Nature|Science|JAMA|Lancet|BMJ|Cell|PNAS)[^.]*)',
+            r'(Nature\s+Communications|Nature\s+Medicine|JAMA|The\s+Lancet|BMJ|Cell|Science|PNAS)[^.]*',
+            r'(?:UK\s+)?[Bb]io\s*[Bb]ank',
+            r'NHANES',
+        ]
+        for pattern in study_patterns:
+            for match in re.findall(pattern, combined_text, re.IGNORECASE):
+                if isinstance(match, str) and len(match) > 3:
+                    clean = match.strip()
+                    if clean not in refs.studies:
+                        refs.studies.append(clean)
+
+        # People
+        people_patterns = [
+            r'(?:Dr\.?\s+|Professor\s+|Prof\.?\s+)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
+            r'([A-Z][a-z]+\s+(?:[A-Z][a-z]+\s+)?(?:Lavine|Patrick|Huberman|Attia|Sinclair|Homer|Gabala|Stamatakis))',
+            r'(Ben\s+Lavine|Martin\s+Gabala|Rhonda\s+Patrick|Brady\s+Homer)',
+        ]
+        for pattern in people_patterns:
+            for match in re.findall(pattern, combined_text):
+                if isinstance(match, str) and len(match) > 3:
+                    clean = match.strip()
+                    if clean not in refs.people and not any(p in clean for p in refs.people):
+                        refs.people.append(clean)
+
+        # Books
+        book_patterns = [
+            r'(?:book|author of|wrote)\s+(?:called\s+|titled\s+)?["\']?([A-Z][^"\'.,]+(?:Essentials|Guide|Protocol|Way|Method)[^"\'.,]*)',
+            r'V2\s*Max\s+Essentials',
+        ]
+        for pattern in book_patterns:
+            for match in re.findall(pattern, combined_text, re.IGNORECASE):
+                if isinstance(match, str) and len(match) > 3:
+                    clean = match.strip()
+                    if clean not in refs.books:
+                        refs.books.append(clean)
+
+        # Organizations
+        org_patterns = [
+            r'(World\s+Health\s+Organization|WHO|CDC|NIH|FDA|American\s+Heart\s+Association|AHA)',
+            r'(UK\s+[Bb]io\s*[Bb]ank|Biobank)',
+        ]
+        for pattern in org_patterns:
+            for match in re.findall(pattern, combined_text, re.IGNORECASE):
+                if isinstance(match, str) and len(match) > 2:
+                    clean = match.strip()
+                    if clean not in refs.organizations:
+                        refs.organizations.append(clean)
+
+        # URLs from description
+        url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
+        refs.urls = list(set(re.findall(url_pattern, description)))[:20]
+
+        # Scientific terms
+        term_patterns = [
+            r'\b(V[O2o]2\s*[Mm]ax|VO2max)\b',
+            r'\b(metabolic\s+equivalent|MET[sS]?)\b',
+            r'\b(Norwegian\s+4x4)\b',
+            r'\b(VILPA|vigorous\s+intermittent\s+lifestyle\s+physical\s+activity)\b',
+            r'\b(zone\s+2|Zone\s+2)\b',
+            r'\b(HIIT|high[- ]intensity\s+interval\s+training)\b',
+            r'\b(stroke\s+volume)\b',
+            r'\b(endothelial\s+function)\b',
+            r'\b(shear\s+stress)\b',
+            r'\b(nitric\s+oxide)\b',
+            r'\b(cardiac\s+fibrosis)\b',
+            r'\b(health\s+equivalence\s+ratio)\b',
+        ]
+        for pattern in term_patterns:
+            for match in re.findall(pattern, combined_text, re.IGNORECASE):
+                if isinstance(match, str):
+                    clean = match.strip()
+                    if 'vo2' in clean.lower() or 'v2' in clean.lower():
+                        clean = "VO2 max"
+                    if clean not in refs.terms:
+                        refs.terms.append(clean)
+
+        return refs
+
+    def format_duration(self, seconds: int) -> str:
+        """Format duration in human-readable format."""
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        if hours > 0:
+            return f"{hours}h {minutes}m"
+        return f"{minutes}m"
+
+    def generate_llm_prompt(self, video: VideoMetadata, transcript: str, refs: References) -> str:
+        """Generate a prompt for LLM summarization."""
+        refs_text = ""
+        if any([refs.studies, refs.people, refs.books, refs.organizations, refs.terms]):
+            refs_text = "\n\nEXTRACTED REFERENCES:\n"
+            if refs.studies:
+                refs_text += f"\nSTUDIES:\n" + "\n".join(f"  - {s}" for s in refs.studies)
+            if refs.people:
+                refs_text += f"\nPEOPLE:\n" + "\n".join(f"  - {p}" for p in refs.people)
+            if refs.books:
+                refs_text += f"\nBOOKS:\n" + "\n".join(f"  - {b}" for b in refs.books)
+            if refs.organizations:
+                refs_text += f"\nORGANIZATIONS:\n" + "\n".join(f"  - {o}" for o in refs.organizations)
+            if refs.terms:
+                refs_text += f"\nTERMS:\n" + "\n".join(f"  - {t}" for t in refs.terms)
+
+        return f"""Please summarize the following video transcript. Include:
+
+1. **Overview** - What is this video about?
+2. **Key Findings** - Main points, data, and conclusions
+3. **Practical Takeaways** - Actionable advice for the viewer
+4. **Annotated References** - List all studies, papers, books, people, and scientific terms mentioned with context
+
+VIDEO METADATA:
+- Title: {video.title}
+- Channel: {video.channel}
+- Duration: {self.format_duration(video.duration)}
+- URL: {video.url}
+{refs_text}
+
+TRANSCRIPT:
+{transcript[:50000]}
+
+Please provide the summary in Markdown format."""
+
+    def analyze(self, url: str) -> VideoAnalysis:
+        """Main analysis pipeline - returns structured data."""
+        # Download and parse
+        info = self.download_subtitles(url)
+        transcript = self.parse_vtt(info['subtitle_file'])
+        refs = self.extract_references(transcript, info.get('description', ''))
+
+        video = VideoMetadata(
+            video_id=info['video_id'],
+            title=info['title'],
+            channel=info['channel'],
+            duration=info['duration'],
+            url=url
+        )
+
+        llm_prompt = self.generate_llm_prompt(video, transcript, refs)
+
+        return VideoAnalysis(
+            video=video,
+            references=refs,
+            transcript=transcript[:100000],
+            llm_prompt=llm_prompt
+        )

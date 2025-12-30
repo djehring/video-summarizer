@@ -17,10 +17,34 @@ Extract transcripts from YouTube videos and generate summaries with annotated re
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.11+
 - yt-dlp (`brew install yt-dlp`)
+- Node.js 20+ (for web interface)
+- Docker (optional)
 
-## Usage
+## Web Interface
+
+### Using Docker (Recommended)
+```bash
+docker-compose up --build
+```
+Then open http://localhost:3000
+
+### Local Development
+```bash
+# Terminal 1 - Backend
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+
+# Terminal 2 - Frontend
+cd frontend
+npm install
+npm run dev
+```
+Then open http://localhost:5173
+
+## CLI Usage
 
 ### Quick command:
 ```bash
