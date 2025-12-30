@@ -1,0 +1,31 @@
+{
+    "mcpServers": {
+      "playwright": {
+        "command": "npx",
+        "args": ["@playwright/mcp@latest"]
+      },
+      "mcp-server-firecrawl": {
+        "command": "npx",
+        "args": ["-y", "firecrawl-mcp"],
+        "env": {
+          "FIRECRAWL_API_KEY": "fc-632f76635217406ba7a0a2d3209625d2"
+        }
+      },
+      "Ref": {
+        "type": "http",
+        "url": "https://api.ref.tools/mcp",
+        "headers": {
+          "x-ref-api-key": "ref-1a9b5b9672fa05c3ea1d"
+        },
+        "disabled": false
+      },
+      "exa": {
+        "type": "http",
+        "url": "https://mcp.exa.ai/mcp",
+        "apiKey": "60e7085a-7f41-4c83-b1ed-388e6409f4a8",
+        "headers": {}
+      }
+    },
+    "globalShortcut": "Alt+C"
+  }
+  

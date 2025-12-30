@@ -54,6 +54,11 @@ Be concise but thorough. Use the transcript to provide accurate information."""
 
     def summarize(self, analysis: VideoAnalysis) -> str:
         """Generate an AI summary of the video."""
+        # Build URLs list for the prompt
+        urls_text = ""
+        if analysis.references.urls:
+            urls_text = "\n\nURLs FROM DESCRIPTION:\n" + "\n".join(f"- {url}" for url in analysis.references.urls[:15])
+
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
@@ -63,18 +68,49 @@ Be concise but thorough. Use the transcript to provide accurate information."""
                 },
                 {
                     "role": "user",
-                    "content": """Please provide a comprehensive summary of this video including:
+                    "content": f"""Create a comprehensive annotated summary of this video. Use the following structure with Markdown tables where indicated:
 
-1. **Overview** - What is this video about? (2-3 sentences)
-2. **Key Findings** - Main points, data, and conclusions (bullet points)
-3. **Practical Takeaways** - Actionable advice for the viewer (bullet points)
-4. **Notable References** - Important studies, people, or concepts mentioned with brief context
+## 📚 Annotated Summary: "{analysis.video.title}"
 
-Format the response in Markdown."""
+### Video Info
+Create a brief info block with:
+- Channel & host/guest names (if identifiable)
+- Duration
+- Format (interview, lecture, journal club, etc.)
+
+### 📑 Key Study/Research Discussed
+If a specific study is discussed, provide:
+- Full citation (authors, year, title, journal)
+- A table with: Data Source, Sample Size, Methods, Key Findings
+
+### 👤 People Referenced
+Create a table with columns: Person | Context/Role
+Include hosts, guests, and researchers mentioned.
+
+### 📖 Books & Resources
+If any books, newsletters, or resources are mentioned, create a table: Resource | Author | Description
+
+### 🔬 Key Scientific Terms Glossary
+Create a table defining important technical terms: Term | Definition
+Focus on concepts that viewers might need explained.
+
+### 🏛️ Organizations & Datasets
+List any organizations, studies, or datasets referenced with context.
+
+### 📊 Key Data Points
+Present the most important statistics, ratios, or findings. Use tables where data can be compared.
+
+### 🔗 Links from Video Description
+{urls_text if urls_text else "List any relevant links mentioned."}
+
+### 💡 Key Takeaways
+Bullet points of actionable insights and main conclusions.
+
+Format everything in clean Markdown with tables using | syntax. Be thorough but concise."""
                 }
             ],
             temperature=0.7,
-            max_tokens=2000
+            max_completion_tokens=4000
         )
         return response.choices[0].message.content
 
@@ -109,6 +145,6 @@ Format the response in Markdown."""
             model=self.model,
             messages=chat_messages,
             temperature=0.7,
-            max_tokens=1500
+            max_completion_tokens=1500
         )
         return response.choices[0].message.content

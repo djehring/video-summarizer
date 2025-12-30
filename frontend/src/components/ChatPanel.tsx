@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { generateSummary, sendChatMessage, type ChatMessage } from '../api/client';
 
 interface ChatPanelProps {
@@ -27,7 +29,7 @@ export function ChatPanel({ jobId, videoTitle }: ChatPanelProps) {
     try {
       const summary = await generateSummary(jobId);
       setMessages([
-        { role: 'user', content: 'Please summarize this video.' },
+        { role: 'user', content: 'Generate annotated summary' },
         { role: 'assistant', content: summary }
       ]);
     } catch (err) {
@@ -60,9 +62,9 @@ export function ChatPanel({ jobId, videoTitle }: ChatPanelProps) {
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col h-[500px]">
+    <div className="bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col h-[700px]">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+      <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between shrink-0">
         <h3 className="font-semibold text-gray-800">AI Assistant</h3>
         {messages.length === 0 && (
           <button
@@ -76,7 +78,7 @@ export function ChatPanel({ jobId, videoTitle }: ChatPanelProps) {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
         {messages.length === 0 ? (
           <div className="text-center text-gray-500 mt-8">
             <p className="mb-2">Ask questions about "{videoTitle}"</p>
@@ -89,13 +91,21 @@ export function ChatPanel({ jobId, videoTitle }: ChatPanelProps) {
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[80%] px-4 py-2 rounded-lg ${
+                className={`max-w-full px-4 py-2 rounded-lg ${
                   msg.role === 'user'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-800'
+                    ? 'bg-blue-600 text-white max-w-[80%]'
+                    : 'bg-gray-50 text-gray-800 border border-gray-200'
                 }`}
               >
-                <div className="whitespace-pre-wrap text-sm">{msg.content}</div>
+                {msg.role === 'assistant' ? (
+                  <div className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-li:text-gray-700 prose-table:text-sm">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {msg.content}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <div className="text-sm">{msg.content}</div>
+                )}
               </div>
             </div>
           ))
@@ -116,13 +126,13 @@ export function ChatPanel({ jobId, videoTitle }: ChatPanelProps) {
 
       {/* Error */}
       {error && (
-        <div className="px-4 py-2 bg-red-50 border-t border-red-200 text-red-700 text-sm">
+        <div className="px-4 py-2 bg-red-50 border-t border-red-200 text-red-700 text-sm shrink-0">
           {error}
         </div>
       )}
 
       {/* Input */}
-      <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-200">
+      <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-200 shrink-0">
         <div className="flex gap-2">
           <input
             type="text"
