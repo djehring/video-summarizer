@@ -15,12 +15,13 @@ app = FastAPI(
 )
 
 # Session middleware (must be added before CORS)
+# SameSite=none + Secure required for cross-domain cookies
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.getenv('SESSION_SECRET', 'change-me-in-production'),
     max_age=86400 * 7,  # 7 days
-    same_site='lax',
-    https_only=False,  # Set to True in production with HTTPS
+    same_site='none',
+    https_only=True,
 )
 
 app.add_middleware(
