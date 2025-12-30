@@ -5,6 +5,9 @@ from authlib.integrations.starlette_client import OAuth
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# Frontend URL for redirects after auth
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3008')
+
 # OAuth setup
 oauth = OAuth()
 oauth.register(
@@ -47,7 +50,7 @@ async def auth_callback(request: Request):
     if allowed_users and email not in allowed_users:
         # Clear any session and redirect with error
         request.session.clear()
-        return RedirectResponse(url='/?error=not_authorized')
+        return RedirectResponse(url=f'{FRONTEND_URL}?error=not_authorized')
 
     # Store user in session
     request.session['user'] = {
@@ -56,14 +59,14 @@ async def auth_callback(request: Request):
         'picture': user_info.get('picture', '')
     }
 
-    return RedirectResponse(url='/')
+    return RedirectResponse(url=FRONTEND_URL)
 
 
 @router.get('/logout')
 async def logout(request: Request):
     """Clear session and logout."""
     request.session.clear()
-    return RedirectResponse(url='/')
+    return RedirectResponse(url=FRONTEND_URL)
 
 
 @router.get('/me')
