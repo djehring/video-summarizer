@@ -1,4 +1,33 @@
-const API_BASE = 'http://localhost:8000/api';
+// API base URL: use env var for Railway, relative for Docker, absolute for dev
+const API_BASE = import.meta.env.VITE_API_BASE
+  || (import.meta.env.DEV ? 'http://localhost:8000/api' : '/api');
+
+// Auth types and functions
+export interface User {
+  email: string;
+  name: string;
+  picture: string;
+}
+
+export async function getCurrentUser(): Promise<User | null> {
+  try {
+    const response = await fetch(`${API_BASE}/auth/me`, {
+      credentials: 'include',
+    });
+    if (!response.ok) return null;
+    return response.json();
+  } catch {
+    return null;
+  }
+}
+
+export function getLoginUrl(): string {
+  return `${API_BASE}/auth/login`;
+}
+
+export function getLogoutUrl(): string {
+  return `${API_BASE}/auth/logout`;
+}
 
 export interface VideoMetadata {
   video_id: string;

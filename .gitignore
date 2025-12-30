@@ -51,6 +51,7 @@ frontend/dist/
 .env
 *.env.local
 .mcp.json
+client_secret*.json
 
 # Playwright
 .playwright-mcp/
