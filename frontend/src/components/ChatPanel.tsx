@@ -8,6 +8,39 @@ interface ChatPanelProps {
   videoTitle: string;
 }
 
+// Copy button component
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="absolute top-2 right-2 p-1.5 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors"
+      title="Copy to clipboard"
+    >
+      {copied ? (
+        <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+      ) : (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 export function ChatPanel({ jobId, videoTitle }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -91,12 +124,13 @@ export function ChatPanel({ jobId, videoTitle }: ChatPanelProps) {
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-full px-4 py-2 rounded-lg ${
+                className={`max-w-full rounded-lg relative ${
                   msg.role === 'user'
-                    ? 'bg-blue-600 text-white max-w-[80%]'
-                    : 'bg-gray-50 text-gray-800 border border-gray-200'
+                    ? 'bg-blue-600 text-white max-w-[80%] px-4 py-2'
+                    : 'bg-gray-50 text-gray-800 border border-gray-200 px-4 py-2 pr-10'
                 }`}
               >
+                {msg.role === 'assistant' && <CopyButton text={msg.content} />}
                 {msg.role === 'assistant' ? (
                   <div className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-li:text-gray-700 prose-table:text-sm">
                     <ReactMarkdown
