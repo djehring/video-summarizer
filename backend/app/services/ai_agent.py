@@ -30,7 +30,7 @@ class AIAgent:
         if len(analysis.transcript) > 30000:
             transcript_preview += "\n\n[Transcript truncated...]"
 
-        return f"""You are an AI assistant helping analyze and discuss a YouTube video.
+        return f"""You are an AI assistant helping analyse and discuss a YouTube video. Always use UK English spelling and conventions (e.g., analyse, summarise, colour, behaviour, organisation).
 
 VIDEO INFORMATION:
 - Title: {analysis.video.title}
@@ -62,7 +62,7 @@ Be concise but thorough. Use the transcript to provide accurate information."""
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a helpful assistant that creates concise video synopses."
+                    "content": "You are a helpful assistant that creates concise video synopses. Always use UK English spelling and conventions (e.g., analyse, summarise, colour, behaviour, organisation)."
                 },
                 {
                     "role": "user",
