@@ -12,6 +12,7 @@ interface HistorySidebarProps {
   onNewAnalysis: () => void;
   onViewModeChange: (mode: ViewMode) => void;
   hasVideo: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
 }
 
 function formatDuration(seconds: number | null): string {
@@ -116,7 +117,8 @@ export function HistorySidebar({
   viewMode,
   onNewAnalysis,
   onViewModeChange,
-  hasVideo
+  hasVideo,
+  onCollapsedChange
 }: HistorySidebarProps) {
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,6 +132,11 @@ export function HistorySidebar({
   useEffect(() => {
     loadHistory();
   }, [refreshTrigger]);
+
+  // Notify parent of collapsed state changes
+  useEffect(() => {
+    onCollapsedChange?.(desktopCollapsed);
+  }, [desktopCollapsed, onCollapsedChange]);
 
   // Close user menu when clicking outside
   useEffect(() => {

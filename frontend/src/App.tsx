@@ -30,6 +30,7 @@ function App() {
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [loadedChatMessages, setLoadedChatMessages] = useState<ChatMessage[]>();
   const [viewMode, setViewMode] = useState<ViewMode>('initial');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Check auth state on mount
   useEffect(() => {
@@ -222,6 +223,7 @@ function App() {
         onNewAnalysis={handleNewAnalysis}
         onViewModeChange={setViewMode}
         hasVideo={!!analysis}
+        onCollapsedChange={setSidebarCollapsed}
       />
 
       {/* Main content area */}
@@ -261,8 +263,8 @@ function App() {
         {viewMode === 'summary' && analysis && jobId && (
           <>
             {/* Compact header */}
-            <header className="shrink-0 bg-white border-b border-gray-200 px-4 lg:pl-8 py-3">
-              <div className="max-w-5xl mx-auto">
+            <header className="shrink-0 bg-white border-b border-gray-200 px-4 lg:px-8 py-3">
+              <div className={`mx-auto ${sidebarCollapsed ? 'max-w-6xl' : 'max-w-5xl'}`}>
                 <div className="min-w-0">
                   <h1 className="text-lg font-semibold text-gray-900 truncate">
                     {analysis.video.title}
@@ -272,8 +274,8 @@ function App() {
               </div>
             </header>
 
-            <main className="flex-1 overflow-auto px-4 lg:pl-8 py-6">
-              <div className="max-w-4xl mx-auto">
+            <main className="flex-1 overflow-auto px-4 lg:px-8 py-6">
+              <div className={`mx-auto ${sidebarCollapsed ? 'max-w-5xl' : 'max-w-4xl'}`}>
                 <SummaryView analysis={analysis} />
               </div>
             </main>
@@ -284,8 +286,8 @@ function App() {
         {viewMode === 'chat' && analysis && jobId && (
           <>
             {/* Minimal header */}
-            <header className="shrink-0 bg-white border-b border-gray-200 px-4 lg:pl-8 py-3">
-              <div className="max-w-4xl mx-auto">
+            <header className="shrink-0 bg-white border-b border-gray-200 px-4 lg:px-8 py-3">
+              <div className={`mx-auto ${sidebarCollapsed ? 'max-w-5xl' : 'max-w-4xl'}`}>
                 <h1 className="text-sm font-medium text-gray-700 truncate">
                   {analysis.video.title}
                 </h1>
@@ -293,7 +295,7 @@ function App() {
             </header>
 
             <main className="flex-1 overflow-hidden">
-              <div className="h-full max-w-4xl mx-auto">
+              <div className={`h-full mx-auto ${sidebarCollapsed ? 'max-w-5xl' : 'max-w-4xl'}`}>
                 <ChatPanel
                   jobId={jobId}
                   initialMessages={loadedChatMessages}
