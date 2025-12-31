@@ -100,6 +100,8 @@ def save_to_history_sync(job_id: str, result: VideoAnalysis, user_email: str):
     # Use sync driver (psycopg2) instead of async (asyncpg)
     if db_url.startswith('postgresql+asyncpg://'):
         db_url = db_url.replace('postgresql+asyncpg://', 'postgresql://')
+    elif db_url.startswith('postgres://'):
+        db_url = db_url.replace('postgres://', 'postgresql://', 1)
 
     try:
         engine = create_engine(db_url)
