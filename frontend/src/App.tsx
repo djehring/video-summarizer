@@ -2,17 +2,18 @@ import { useState, useEffect } from 'react';
 import { VideoForm } from './components/VideoForm';
 import { SummaryView } from './components/SummaryView';
 import { ChatPanel } from './components/ChatPanel';
+import { HistorySidebar } from './components/HistorySidebar';
 import {
   submitVideo,
   pollUntilComplete,
   getCurrentUser,
   getLoginUrl,
-  getLogoutUrl,
   exchangeAuthToken,
   setStoredToken,
-  clearStoredToken,
+  getHistoryItem,
   type VideoAnalysis,
-  type User
+  type User,
+  type ChatMessage
 } from './api/client';
 
 function App() {
@@ -24,6 +25,9 @@ function App() {
   const [jobId, setJobId] = useState<string>();
   const [analysis, setAnalysis] = useState<VideoAnalysis>();
   const [error, setError] = useState<string>();
+  const [historyRefresh, setHistoryRefresh] = useState(0);
+  const [loadedChatMessages, setLoadedChatMessages] = useState<ChatMessage[]>();
+  const [isFromHistory, setIsFromHistory] = useState(false);
 
   // Check auth state on mount
   useEffect(() => {
@@ -70,6 +74,8 @@ function App() {
     setError(undefined);
     setAnalysis(undefined);
     setJobId(undefined);
+    setLoadedChatMessages(undefined);
+    setIsFromHistory(false);
 
     try {
       const job = await submitVideo(url);
@@ -85,6 +91,8 @@ function App() {
       if (result.result) {
         setAnalysis(result.result);
         setStatus(undefined);
+        // Refresh history after successful analysis
+        setHistoryRefresh(prev => prev + 1);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -92,6 +100,63 @@ function App() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSelectHistory = async (selectedJobId: string) => {
+    setIsLoading(true);
+    setStatus('Loading from history...');
+    setError(undefined);
+
+    try {
+      const historyItem = await getHistoryItem(selectedJobId);
+
+      // Convert history item to VideoAnalysis format
+      const loadedAnalysis: VideoAnalysis = {
+        video: {
+          video_id: historyItem.video_id,
+          title: historyItem.title || '',
+          channel: historyItem.channel || '',
+          duration: historyItem.duration || 0,
+          url: historyItem.url || '',
+        },
+        references: historyItem.references || {
+          studies: [],
+          people: [],
+          books: [],
+          organizations: [],
+          terms: [],
+          paper_links: [],
+          urls: [],
+        },
+        transcript: historyItem.transcript || '',
+        llm_prompt: historyItem.llm_prompt || '',
+      };
+
+      setJobId(selectedJobId);
+      setAnalysis(loadedAnalysis);
+      setLoadedChatMessages(
+        historyItem.chat_messages.map(m => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        }))
+      );
+      setIsFromHistory(true);
+      setStatus(undefined);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load history');
+      setStatus(undefined);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleNewAnalysis = () => {
+    setJobId(undefined);
+    setAnalysis(undefined);
+    setError(undefined);
+    setStatus(undefined);
+    setLoadedChatMessages(undefined);
+    setIsFromHistory(false);
   };
 
   // Loading state
@@ -142,56 +207,79 @@ function App() {
     );
   }
 
-  // Logged in - show main app
+  // Logged in - show main app with sidebar
   return (
-    <div className="min-h-screen bg-gray-100 py-8 px-4">
-      <div className="max-w-6xl mx-auto space-y-8">
-        <header className="text-center relative">
-          {/* User menu */}
-          <div className="absolute right-0 top-0 flex items-center gap-3">
-            <img
-              src={user.picture}
-              alt={user.name}
-              className="w-8 h-8 rounded-full"
-            />
-            <span className="text-sm text-gray-600 hidden sm:inline">{user.email}</span>
-            <a
-              href={getLogoutUrl()}
-              onClick={() => clearStoredToken()}
-              className="text-sm text-gray-500 hover:text-gray-700"
-            >
-              Logout
-            </a>
-          </div>
+    <div className="h-screen bg-gray-100 flex overflow-hidden">
+      {/* History Sidebar */}
+      <HistorySidebar
+        onSelectItem={handleSelectHistory}
+        selectedJobId={jobId}
+        refreshTrigger={historyRefresh}
+        user={user}
+      />
 
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Video Summariser
-          </h1>
-          <p className="text-gray-600">
-            Extract transcripts and references from YouTube videos
-          </p>
+      {/* Main content area */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-gray-100">
+        {/* Fixed header */}
+        <header className="shrink-0 bg-gray-100 pt-8 pb-4 px-4 lg:pl-8">
+          <div className="max-w-5xl mx-auto text-center">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              Video Summariser
+            </h1>
+            <p className="text-gray-600">
+              Extract transcripts and references from YouTube videos
+            </p>
+          </div>
         </header>
 
-        <div className="flex justify-center">
-          <VideoForm onSubmit={handleSubmit} isLoading={isLoading} status={status} />
-        </div>
+        {/* Scrollable content area */}
+        <main className="flex-1 overflow-hidden px-4 lg:pl-8 pb-8">
+          <div className="max-w-5xl mx-auto h-full flex flex-col">
+            {/* New Analysis button when viewing history */}
+            {isFromHistory && (
+              <div className="flex justify-center py-4 shrink-0">
+                <button
+                  onClick={handleNewAnalysis}
+                  className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  + New Analysis
+                </button>
+              </div>
+            )}
 
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-            {error}
-          </div>
-        )}
+            {/* Video form - hide when viewing from history */}
+            {!isFromHistory && (
+              <div className="flex justify-center py-4 shrink-0">
+                <VideoForm onSubmit={handleSubmit} isLoading={isLoading} status={status} />
+              </div>
+            )}
 
-        {analysis && jobId && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="space-y-6">
-              <SummaryView analysis={analysis} />
-            </div>
-            <div className="lg:sticky lg:top-8 lg:self-start">
-              <ChatPanel jobId={jobId} videoTitle={analysis.video.title} />
-            </div>
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 mb-4 shrink-0">
+                {error}
+              </div>
+            )}
+
+            {analysis && jobId && (
+              <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-0">
+                {/* Left column - scrollable summary */}
+                <div className="overflow-y-auto pr-2">
+                  <div className="space-y-6 pb-4">
+                    <SummaryView analysis={analysis} />
+                  </div>
+                </div>
+                {/* Right column - chat panel with its own scroll */}
+                <div className="flex flex-col min-h-0">
+                  <ChatPanel
+                    jobId={jobId}
+                    videoTitle={analysis.video.title}
+                    initialMessages={loadedChatMessages}
+                  />
+                </div>
+              </div>
+            )}
           </div>
-        )}
+        </main>
       </div>
     </div>
   );

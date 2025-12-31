@@ -194,18 +194,18 @@ interface HistoryEntry {
 ## Implementation Phases
 
 ### Phase 1 - Basic History (3-4 hours)
-- [ ] Add PostgreSQL to Railway project
-- [ ] Create database schema
-- [ ] Add SQLAlchemy or asyncpg to backend
-- [ ] Create history router with list/get/delete endpoints
-- [ ] Auto-save analyses to database
-- [ ] Basic history list in frontend
-- [ ] Load analysis from history
+- [x] Add PostgreSQL to Railway project
+- [x] Create database schema
+- [x] Add SQLAlchemy or asyncpg to backend
+- [x] Create history router with list/get/delete endpoints
+- [x] Auto-save analyses to database
+- [x] Basic history list in frontend
+- [x] Load analysis from history
 
 ### Phase 2 - Chat Persistence (2 hours)
-- [ ] Save chat messages to database on send
-- [ ] Load chat history when selecting from history
-- [ ] Resume conversations seamlessly
+- [x] Save chat messages to database on send
+- [x] Load chat history when selecting from history
+- [x] Resume conversations seamlessly
 
 ### Phase 3 - Polish (2-3 hours)
 - [ ] Search history by title/channel

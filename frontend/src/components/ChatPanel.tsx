@@ -6,6 +6,7 @@ import { generateSummary, sendChatMessage, type ChatMessage } from '../api/clien
 interface ChatPanelProps {
   jobId: string;
   videoTitle: string;
+  initialMessages?: ChatMessage[];
 }
 
 // Copy button component
@@ -41,8 +42,8 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-export function ChatPanel({ jobId, videoTitle }: ChatPanelProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+export function ChatPanel({ jobId, videoTitle, initialMessages }: ChatPanelProps) {
+  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages || []);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
@@ -51,6 +52,11 @@ export function ChatPanel({ jobId, videoTitle }: ChatPanelProps) {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  // Reset messages when jobId changes (new video selected)
+  useEffect(() => {
+    setMessages(initialMessages || []);
+  }, [jobId, initialMessages]);
 
   useEffect(() => {
     scrollToBottom();
@@ -95,7 +101,7 @@ export function ChatPanel({ jobId, videoTitle }: ChatPanelProps) {
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col h-[700px]">
+    <div className="bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col h-full min-h-[400px] max-h-[calc(100vh-200px)]">
       {/* Header */}
       <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between shrink-0">
         <h3 className="font-semibold text-gray-800">AI Assistant</h3>

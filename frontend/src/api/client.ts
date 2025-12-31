@@ -189,3 +189,77 @@ export async function sendChatMessage(
   const data = await response.json();
   return data.response;
 }
+
+// History API
+export interface HistoryItem {
+  job_id: string;
+  video_id: string;
+  title: string | null;
+  channel: string | null;
+  duration: number | null;
+  url: string | null;
+  created_at: string;
+  message_count: number;
+}
+
+export interface HistoryListResponse {
+  items: HistoryItem[];
+  total: number;
+}
+
+export interface HistoryChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
+}
+
+export interface HistoryDetail {
+  job_id: string;
+  video_id: string;
+  title: string | null;
+  channel: string | null;
+  duration: number | null;
+  url: string | null;
+  references: References | null;
+  transcript: string | null;
+  llm_prompt: string | null;
+  chat_messages: HistoryChatMessage[];
+  created_at: string;
+}
+
+export async function getHistory(): Promise<HistoryListResponse> {
+  const response = await fetch(`${API_BASE}/history`, {
+    credentials: 'include',
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) {
+    if (response.status === 503) {
+      // History feature not available
+      return { items: [], total: 0 };
+    }
+    throw new Error('Failed to get history');
+  }
+  return response.json();
+}
+
+export async function getHistoryItem(jobId: string): Promise<HistoryDetail> {
+  const response = await fetch(`${API_BASE}/history/${jobId}`, {
+    credentials: 'include',
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to get history item');
+  }
+  return response.json();
+}
+
+export async function deleteHistoryItem(jobId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/history/${jobId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete history item');
+  }
+}

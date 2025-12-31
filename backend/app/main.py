@@ -1,17 +1,27 @@
 import os
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.routers import videos, chat, auth
+from app.routers import videos, chat, auth, history
+from app.database import init_db, is_database_configured
 
 load_dotenv()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize database on startup."""
+    await init_db()
+    yield
 
 app = FastAPI(
     title="Video Summarizer API",
     description="Extract transcripts from YouTube videos and generate summaries with annotated references",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Session middleware (must be added before CORS)
@@ -52,6 +62,7 @@ async def require_auth(request: Request):
 app.include_router(auth.router, prefix="/api")
 app.include_router(videos.router, prefix="/api/videos", tags=["videos"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
+app.include_router(history.router, prefix="/api/history", tags=["history"])
 
 
 @app.get("/health")
