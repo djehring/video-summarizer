@@ -5,8 +5,8 @@ import { generateSummary, sendChatMessage, type ChatMessage } from '../api/clien
 
 interface ChatPanelProps {
   jobId: string;
-  videoTitle: string;
   initialMessages?: ChatMessage[];
+  fullScreen?: boolean;
 }
 
 // Copy button component
@@ -42,7 +42,7 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-export function ChatPanel({ jobId, videoTitle, initialMessages }: ChatPanelProps) {
+export function ChatPanel({ jobId, initialMessages, fullScreen = false }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages || []);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -100,28 +100,43 @@ export function ChatPanel({ jobId, videoTitle, initialMessages }: ChatPanelProps
     }
   };
 
+  const containerClass = fullScreen
+    ? "bg-gray-50 flex flex-col h-full"
+    : "bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col h-full min-h-[400px] max-h-[calc(100vh-200px)]";
+
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col h-full min-h-[400px] max-h-[calc(100vh-200px)]">
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between shrink-0">
-        <h3 className="font-semibold text-gray-800">AI Assistant</h3>
-        {messages.length === 0 && (
-          <button
-            onClick={handleGenerateSummary}
-            disabled={isLoading}
-            className="px-3 py-1.5 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:bg-gray-400 transition-colors"
-          >
-            {isLoading ? 'Generating...' : 'Generate Summary'}
-          </button>
-        )}
-      </div>
+    <div className={containerClass}>
+      {/* Header - only show when not fullScreen */}
+      {!fullScreen && (
+        <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between shrink-0">
+          <h3 className="font-semibold text-gray-800">AI Assistant</h3>
+          {messages.length === 0 && (
+            <button
+              onClick={handleGenerateSummary}
+              disabled={isLoading}
+              className="px-3 py-1.5 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:bg-gray-400 transition-colors"
+            >
+              {isLoading ? 'Generating...' : 'Generate Summary'}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+      <div className={`flex-1 overflow-y-auto space-y-4 min-h-0 ${fullScreen ? 'px-4 py-6' : 'p-4'}`}>
         {messages.length === 0 ? (
-          <div className="text-center text-gray-500 mt-8">
-            <p className="mb-2">Ask questions about "{videoTitle}"</p>
-            <p className="text-sm">Click "Generate Summary" or type a question below.</p>
+          <div className={`text-center text-gray-500 ${fullScreen ? 'mt-16' : 'mt-8'}`}>
+            <p className="mb-4 text-lg">Ask questions about this video</p>
+            <p className="text-sm mb-6">Or generate an AI summary to get started</p>
+            {fullScreen && (
+              <button
+                onClick={handleGenerateSummary}
+                disabled={isLoading}
+                className="px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:bg-gray-400 transition-colors"
+              >
+                {isLoading ? 'Generating...' : 'Generate Summary'}
+              </button>
+            )}
           </div>
         ) : (
           messages.map((msg, i) => (
@@ -130,10 +145,12 @@ export function ChatPanel({ jobId, videoTitle, initialMessages }: ChatPanelProps
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-full rounded-lg relative ${
+                className={`rounded-lg relative ${
                   msg.role === 'user'
                     ? 'bg-blue-600 text-white max-w-[80%] px-4 py-2'
-                    : 'bg-gray-50 text-gray-800 border border-gray-200 px-4 py-2 pr-10'
+                    : fullScreen
+                      ? 'bg-white text-gray-800 border border-gray-200 max-w-[85%] px-4 py-3 pr-10 shadow-sm'
+                      : 'bg-gray-50 text-gray-800 border border-gray-200 max-w-full px-4 py-2 pr-10'
                 }`}
               >
                 {msg.role === 'assistant' && <CopyButton text={msg.content} />}
@@ -181,20 +198,24 @@ export function ChatPanel({ jobId, videoTitle, initialMessages }: ChatPanelProps
       )}
 
       {/* Input */}
-      <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-200 shrink-0">
-        <div className="flex gap-2">
+      <form onSubmit={handleSendMessage} className={`shrink-0 ${fullScreen ? 'p-4 bg-gray-50' : 'p-4 border-t border-gray-200'}`}>
+        <div className={`flex gap-2 ${fullScreen ? 'max-w-3xl mx-auto' : ''}`}>
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask about the video..."
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900"
+            className={`flex-1 px-4 py-2 border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 ${
+              fullScreen ? 'rounded-full bg-white shadow-sm' : 'rounded-lg'
+            }`}
             disabled={isLoading}
           />
           <button
             type="submit"
             disabled={isLoading || !input.trim()}
-            className="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+            className={`px-4 py-2 bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors ${
+              fullScreen ? 'rounded-full' : 'rounded-lg'
+            }`}
           >
             Send
           </button>

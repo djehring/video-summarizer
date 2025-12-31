@@ -16,6 +16,8 @@ import {
   type ChatMessage
 } from './api/client';
 
+type ViewMode = 'initial' | 'summary' | 'chat';
+
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -27,7 +29,7 @@ function App() {
   const [error, setError] = useState<string>();
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [loadedChatMessages, setLoadedChatMessages] = useState<ChatMessage[]>();
-  const [isFromHistory, setIsFromHistory] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('initial');
 
   // Check auth state on mount
   useEffect(() => {
@@ -75,7 +77,6 @@ function App() {
     setAnalysis(undefined);
     setJobId(undefined);
     setLoadedChatMessages(undefined);
-    setIsFromHistory(false);
 
     try {
       const job = await submitVideo(url);
@@ -91,6 +92,7 @@ function App() {
       if (result.result) {
         setAnalysis(result.result);
         setStatus(undefined);
+        setViewMode('summary');
         // Refresh history after successful analysis
         setHistoryRefresh(prev => prev + 1);
       }
@@ -134,13 +136,13 @@ function App() {
 
       setJobId(selectedJobId);
       setAnalysis(loadedAnalysis);
-      setLoadedChatMessages(
-        historyItem.chat_messages.map(m => ({
-          role: m.role as 'user' | 'assistant',
-          content: m.content,
-        }))
-      );
-      setIsFromHistory(true);
+      const messages = historyItem.chat_messages.map(m => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      }));
+      setLoadedChatMessages(messages);
+      // Always start with summary view when loading from history
+      setViewMode('summary');
       setStatus(undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load history');
@@ -156,7 +158,7 @@ function App() {
     setError(undefined);
     setStatus(undefined);
     setLoadedChatMessages(undefined);
-    setIsFromHistory(false);
+    setViewMode('initial');
   };
 
   // Loading state
@@ -216,70 +218,98 @@ function App() {
         selectedJobId={jobId}
         refreshTrigger={historyRefresh}
         user={user}
+        viewMode={viewMode}
+        onNewAnalysis={handleNewAnalysis}
+        onViewModeChange={setViewMode}
+        hasVideo={!!analysis}
       />
 
       {/* Main content area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-gray-100">
-        {/* Fixed header */}
-        <header className="shrink-0 bg-gray-100 pt-8 pb-4 px-4 lg:pl-8">
-          <div className="max-w-5xl mx-auto text-center">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Video Summariser
-            </h1>
-            <p className="text-gray-600">
-              Extract transcripts and references from YouTube videos
-            </p>
-          </div>
-        </header>
 
-        {/* Scrollable content area */}
-        <main className="flex-1 overflow-hidden px-4 lg:pl-8 pb-8">
-          <div className="max-w-5xl mx-auto h-full flex flex-col">
-            {/* New Analysis button when viewing history */}
-            {isFromHistory && (
-              <div className="flex justify-center py-4 shrink-0">
-                <button
-                  onClick={handleNewAnalysis}
-                  className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  + New Analysis
-                </button>
+        {/* INITIAL MODE - Big header + search form */}
+        {viewMode === 'initial' && (
+          <>
+            <header className="shrink-0 bg-gray-100 pt-16 pb-4 px-4 lg:pl-8">
+              <div className="max-w-2xl mx-auto text-center">
+                <h1 className="text-4xl font-bold text-gray-900 mb-3">
+                  Video Summariser
+                </h1>
+                <p className="text-gray-600 text-lg">
+                  Extract transcripts and references from YouTube videos
+                </p>
               </div>
-            )}
+            </header>
 
-            {/* Video form - hide when viewing from history */}
-            {!isFromHistory && (
-              <div className="flex justify-center py-4 shrink-0">
-                <VideoForm onSubmit={handleSubmit} isLoading={isLoading} status={status} />
-              </div>
-            )}
+            <main className="flex-1 overflow-auto px-4 lg:pl-8 pb-8">
+              <div className="max-w-2xl mx-auto">
+                <div className="py-8">
+                  <VideoForm onSubmit={handleSubmit} isLoading={isLoading} status={status} />
+                </div>
 
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 mb-4 shrink-0">
-                {error}
-              </div>
-            )}
-
-            {analysis && jobId && (
-              <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-0">
-                {/* Left column - scrollable summary */}
-                <div className="overflow-y-auto pr-2">
-                  <div className="space-y-6 pb-4">
-                    <SummaryView analysis={analysis} />
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+                    {error}
                   </div>
-                </div>
-                {/* Right column - chat panel with its own scroll */}
-                <div className="flex flex-col min-h-0">
-                  <ChatPanel
-                    jobId={jobId}
-                    videoTitle={analysis.video.title}
-                    initialMessages={loadedChatMessages}
-                  />
+                )}
+              </div>
+            </main>
+          </>
+        )}
+
+        {/* SUMMARY MODE - Full summary view */}
+        {viewMode === 'summary' && analysis && jobId && (
+          <>
+            {/* Compact header */}
+            <header className="shrink-0 bg-white border-b border-gray-200 px-4 lg:pl-8 py-3">
+              <div className="max-w-5xl mx-auto">
+                <div className="min-w-0">
+                  <h1 className="text-lg font-semibold text-gray-900 truncate">
+                    {analysis.video.title}
+                  </h1>
+                  <p className="text-sm text-gray-500 truncate">{analysis.video.channel}</p>
                 </div>
               </div>
-            )}
+            </header>
+
+            <main className="flex-1 overflow-auto px-4 lg:pl-8 py-6">
+              <div className="max-w-4xl mx-auto">
+                <SummaryView analysis={analysis} />
+              </div>
+            </main>
+          </>
+        )}
+
+        {/* CHAT MODE - Full chatbot UI */}
+        {viewMode === 'chat' && analysis && jobId && (
+          <>
+            {/* Minimal header */}
+            <header className="shrink-0 bg-white border-b border-gray-200 px-4 lg:pl-8 py-3">
+              <div className="max-w-4xl mx-auto">
+                <h1 className="text-sm font-medium text-gray-700 truncate">
+                  {analysis.video.title}
+                </h1>
+              </div>
+            </header>
+
+            <main className="flex-1 overflow-hidden">
+              <div className="h-full max-w-4xl mx-auto">
+                <ChatPanel
+                  jobId={jobId}
+                  initialMessages={loadedChatMessages}
+                  fullScreen
+                />
+              </div>
+            </main>
+          </>
+        )}
+
+        {/* Loading overlay for mode transitions */}
+        {isLoading && viewMode !== 'initial' && (
+          <div className="absolute inset-0 bg-gray-100/80 flex items-center justify-center">
+            <div className="text-gray-600">{status || 'Loading...'}</div>
           </div>
-        </main>
+        )}
       </div>
     </div>
   );
