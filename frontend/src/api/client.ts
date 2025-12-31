@@ -91,6 +91,7 @@ export interface VideoAnalysis {
   references: References;
   transcript: string;
   llm_prompt: string;
+  synopsis?: string;
 }
 
 export interface JobResponse {

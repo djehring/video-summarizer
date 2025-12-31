@@ -88,7 +88,7 @@ export function SummaryView({ analysis }: SummaryViewProps) {
   const [showTranscript, setShowTranscript] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const { video, references, transcript, llm_prompt } = analysis;
+  const { video, references, transcript, llm_prompt, synopsis } = analysis;
 
   const copyPrompt = async () => {
     await navigator.clipboard.writeText(llm_prompt);
@@ -101,7 +101,7 @@ export function SummaryView({ analysis }: SummaryViewProps) {
       {/* Video Metadata */}
       <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
         <h2 className="text-2xl font-bold text-gray-900 mb-2">{video.title}</h2>
-        <div className="flex flex-wrap gap-4 text-sm text-gray-600">
+        <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-4">
           <span>Channel: <strong>{video.channel}</strong></span>
           <span>Duration: <strong>{formatDuration(video.duration)}</strong></span>
           <a
@@ -113,6 +113,11 @@ export function SummaryView({ analysis }: SummaryViewProps) {
             Watch on YouTube
           </a>
         </div>
+        {synopsis && (
+          <p className="text-gray-700 leading-relaxed border-t border-gray-100 pt-4">
+            {synopsis}
+          </p>
+        )}
       </div>
 
       {/* References */}

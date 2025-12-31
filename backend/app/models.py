@@ -37,6 +37,7 @@ class VideoAnalysis(BaseModel):
     references: References
     transcript: str
     llm_prompt: str
+    synopsis: Optional[str] = None
 
 
 class JobResponse(BaseModel):

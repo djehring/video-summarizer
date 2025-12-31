@@ -52,6 +52,36 @@ Help the user understand, summarize, and discuss this video content. You can:
 
 Be concise but thorough. Use the transcript to provide accurate information."""
 
+    def generate_synopsis(self, analysis: VideoAnalysis) -> str:
+        """Generate a brief one-paragraph synopsis of the video."""
+        # Use a shorter transcript for synopsis generation
+        transcript_preview = analysis.transcript[:15000]
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant that creates concise video synopses."
+                },
+                {
+                    "role": "user",
+                    "content": f"""Write a single paragraph synopsis (3-5 sentences) summarizing what this video is about. Focus on the main topic, key themes, and what viewers will learn. Be informative but concise.
+
+VIDEO: {analysis.video.title}
+CHANNEL: {analysis.video.channel}
+
+TRANSCRIPT EXCERPT:
+{transcript_preview}
+
+Write only the synopsis paragraph, no headers or formatting."""
+                }
+            ],
+            temperature=0.7,
+            max_completion_tokens=300
+        )
+        return response.choices[0].message.content.strip()
+
     def summarize(self, analysis: VideoAnalysis) -> str:
         """Generate an AI summary of the video."""
         # Build URLs list for the prompt

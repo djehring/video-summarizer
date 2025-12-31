@@ -1,9 +1,11 @@
+import os
 import re
 import uuid
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Depends
 
 from app.models import VideoRequest, JobResponse, JobStatus, VideoAnalysis, VideoMetadata, References
 from app.services.summarizer import VideoSummarizer
+from app.services.ai_agent import AIAgent
 from app.database import VideoHistory, is_database_configured
 
 router = APIRouter()
@@ -13,6 +15,7 @@ jobs: dict[str, JobResponse] = {}
 # Track user email for each job (for saving to history)
 job_users: dict[str, str] = {}
 summarizer = VideoSummarizer()
+ai_agent = AIAgent() if os.getenv("OPENAI_API_KEY") else None
 
 
 def extract_video_id(url: str) -> str | None:
@@ -133,6 +136,15 @@ def process_video(job_id: str, url: str):
     try:
         jobs[job_id].status = JobStatus.PROCESSING
         result = summarizer.analyze(url)
+
+        # Generate synopsis if AI agent is available
+        if ai_agent:
+            try:
+                result.synopsis = ai_agent.generate_synopsis(result)
+            except Exception as e:
+                print(f"[Videos] Failed to generate synopsis: {e}")
+                # Continue without synopsis if generation fails
+
         jobs[job_id].status = JobStatus.COMPLETED
         jobs[job_id].result = result
 
