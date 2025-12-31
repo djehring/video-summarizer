@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getHistory, deleteHistoryItem, getLogoutUrl, clearStoredToken, type HistoryItem, type User } from '../api/client';
 
 type ViewMode = 'initial' | 'summary' | 'chat';
@@ -95,6 +95,19 @@ const AppLogo = () => (
   </svg>
 );
 
+const SettingsIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+  </svg>
+);
+
+const LogoutIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+  </svg>
+);
+
 export function HistorySidebar({
   onSelectItem,
   selectedJobId,
@@ -110,10 +123,31 @@ export function HistorySidebar({
   const [isOpen, setIsOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  const collapsedUserMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadHistory();
   }, [refreshTrigger]);
+
+  // Close user menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      const clickedInExpandedMenu = userMenuRef.current?.contains(target);
+      const clickedInCollapsedMenu = collapsedUserMenuRef.current?.contains(target);
+
+      if (!clickedInExpandedMenu && !clickedInCollapsedMenu) {
+        setUserMenuOpen(false);
+      }
+    };
+
+    if (userMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [userMenuOpen]);
 
   const loadHistory = async () => {
     try {
@@ -151,7 +185,7 @@ export function HistorySidebar({
       <div className="p-4 flex items-center justify-between">
         <div className="flex items-center gap-2 text-gray-700">
           <AppLogo />
-          <span className="font-semibold text-lg">Video AI</span>
+          <span className="font-semibold text-lg">Video Summariser</span>
         </div>
         <button
           onClick={() => setDesktopCollapsed(true)}
@@ -278,29 +312,53 @@ export function HistorySidebar({
         )}
       </div>
 
-      {/* User footer */}
-      <div className="shrink-0 border-t border-gray-200 p-4">
-        <div className="flex items-center gap-3">
+      {/* User footer with popup menu */}
+      <div className="shrink-0 border-t border-gray-200 p-4 relative" ref={userMenuRef}>
+        <button
+          onClick={() => setUserMenuOpen(!userMenuOpen)}
+          className="w-full flex items-center gap-3 p-2 hover:bg-gray-100 rounded-lg transition-colors"
+        >
           <img
             src={user.picture}
             alt={user.name}
             className="w-8 h-8 rounded-full"
           />
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 text-left">
             <div className="text-sm font-medium text-gray-900 truncate">{user.name}</div>
             <div className="text-xs text-gray-500 truncate">{user.email}</div>
           </div>
-          <a
-            href={getLogoutUrl()}
-            onClick={() => clearStoredToken()}
-            className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors"
-            title="Logout"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-            </svg>
-          </a>
-        </div>
+          <svg className={`w-4 h-4 text-gray-400 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+          </svg>
+        </button>
+
+        {/* Popup menu */}
+        {userMenuOpen && (
+          <div className="absolute bottom-full left-4 right-4 mb-2 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
+            <button
+              onClick={() => {
+                setUserMenuOpen(false);
+                // TODO: Open settings modal
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <SettingsIcon />
+              <span>Settings</span>
+            </button>
+            <div className="border-t border-gray-100" />
+            <a
+              href={getLogoutUrl()}
+              onClick={() => {
+                clearStoredToken();
+                setUserMenuOpen(false);
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <LogoutIcon />
+              <span>Log out</span>
+            </a>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -392,14 +450,57 @@ export function HistorySidebar({
         )}
       </div>
 
-      {/* User avatar */}
-      <div className="mt-auto pt-4 border-t border-gray-200 w-full flex justify-center">
-        <img
-          src={user.picture}
-          alt={user.name}
-          className="w-8 h-8 rounded-full cursor-pointer"
-          title={user.name}
-        />
+      {/* User avatar with popup menu */}
+      <div className="mt-auto pt-4 border-t border-gray-200 w-full flex justify-center relative" ref={collapsedUserMenuRef}>
+        <button
+          onClick={() => setUserMenuOpen(!userMenuOpen)}
+          className="relative group"
+        >
+          <img
+            src={user.picture}
+            alt={user.name}
+            className="w-8 h-8 rounded-full cursor-pointer hover:ring-2 hover:ring-gray-300 transition-all"
+          />
+          {/* Username tooltip on hover */}
+          {!userMenuOpen && (
+            <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+              {user.name}
+            </div>
+          )}
+        </button>
+
+        {/* Popup menu - positioned to the right of avatar */}
+        {userMenuOpen && (
+          <div className="absolute bottom-0 left-full ml-2 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden min-w-[200px] z-50">
+            {/* User info header */}
+            <div className="px-4 py-3 border-b border-gray-100">
+              <div className="text-sm font-medium text-gray-900">{user.name}</div>
+              <div className="text-xs text-gray-500">{user.email}</div>
+            </div>
+            <button
+              onClick={() => {
+                setUserMenuOpen(false);
+                // TODO: Open settings modal
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <SettingsIcon />
+              <span>Settings</span>
+            </button>
+            <div className="border-t border-gray-100" />
+            <a
+              href={getLogoutUrl()}
+              onClick={() => {
+                clearStoredToken();
+                setUserMenuOpen(false);
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <LogoutIcon />
+              <span>Log out</span>
+            </a>
+          </div>
+        )}
       </div>
     </div>
   );
