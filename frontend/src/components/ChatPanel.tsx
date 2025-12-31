@@ -48,14 +48,18 @@ export function ChatPanel({ jobId, initialMessages, fullScreen = false }: ChatPa
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const currentJobIdRef = useRef<string>(jobId);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Reset messages when jobId changes (new video selected)
+  // Reset state when jobId changes (new video selected)
   useEffect(() => {
+    currentJobIdRef.current = jobId;
     setMessages(initialMessages || []);
+    setIsLoading(false);
+    setError(undefined);
   }, [jobId, initialMessages]);
 
   useEffect(() => {
@@ -63,18 +67,24 @@ export function ChatPanel({ jobId, initialMessages, fullScreen = false }: ChatPa
   }, [messages]);
 
   const handleGenerateSummary = async () => {
+    const requestJobId = jobId;
     setIsLoading(true);
     setError(undefined);
     try {
-      const summary = await generateSummary(jobId);
+      const summary = await generateSummary(requestJobId);
+      // Only update if still on the same video
+      if (currentJobIdRef.current !== requestJobId) return;
       setMessages([
         { role: 'user', content: 'Generate annotated summary' },
         { role: 'assistant', content: summary }
       ]);
     } catch (err) {
+      if (currentJobIdRef.current !== requestJobId) return;
       setError(err instanceof Error ? err.message : 'Failed to generate summary');
     } finally {
-      setIsLoading(false);
+      if (currentJobIdRef.current === requestJobId) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -82,6 +92,7 @@ export function ChatPanel({ jobId, initialMessages, fullScreen = false }: ChatPa
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
+    const requestJobId = jobId;
     const userMessage = input.trim();
     setInput('');
     setError(undefined);
@@ -91,12 +102,17 @@ export function ChatPanel({ jobId, initialMessages, fullScreen = false }: ChatPa
     setIsLoading(true);
 
     try {
-      const response = await sendChatMessage(jobId, userMessage, messages);
+      const response = await sendChatMessage(requestJobId, userMessage, messages);
+      // Only update if still on the same video
+      if (currentJobIdRef.current !== requestJobId) return;
       setMessages([...newMessages, { role: 'assistant', content: response }]);
     } catch (err) {
+      if (currentJobIdRef.current !== requestJobId) return;
       setError(err instanceof Error ? err.message : 'Failed to send message');
     } finally {
-      setIsLoading(false);
+      if (currentJobIdRef.current === requestJobId) {
+        setIsLoading(false);
+      }
     }
   };
 
