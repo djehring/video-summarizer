@@ -1,0 +1,22 @@
+{
+  "name": "video-summarizer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Extract transcripts from YouTube videos and generate summaries with categorized references",
+  "scripts": {
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && uvicorn app.main:app --reload",
+    "build": "cd frontend && npm run build",
+    "docker": "docker-compose up --build",
+    "docker:detach": "docker-compose up --build -d",
+    "install:frontend": "cd frontend && npm install"
+  },
+  "keywords": [
+    "youtube",
+    "video",
+    "summarizer",
+    "transcript"
+  ],
+  "author": "",
+  "license": "ISC"
+}
