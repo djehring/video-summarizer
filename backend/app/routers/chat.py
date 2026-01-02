@@ -33,6 +33,7 @@ async def require_auth(request: Request) -> dict:
 
 async def save_chat_messages(job_id: str, messages: list[dict], session: AsyncSession):
     """Save chat messages to database."""
+    print(f"[Chat] Saving {len(messages)} messages for job {job_id}")
     for msg in messages:
         db_message = ChatMessageDB(
             job_id=job_id,
@@ -41,6 +42,7 @@ async def save_chat_messages(job_id: str, messages: list[dict], session: AsyncSe
         )
         session.add(db_message)
     await session.commit()
+    print(f"[Chat] Successfully saved messages for job {job_id}")
 
 
 async def get_job_analysis(job_id: str, user_email: str) -> VideoAnalysis | None:
@@ -116,7 +118,11 @@ async def summarize_video(request: SummarizeRequest, req: Request, user: dict = 
                 break
         except Exception as e:
             # Log but don't fail the request if DB save fails
+            import traceback
             print(f"[Chat] Failed to save summary messages: {e}")
+            print(f"[Chat] Traceback: {traceback.format_exc()}")
+    else:
+        print("[Chat] Database not configured, skipping message save")
 
     return SummarizeResponse(summary=summary)
 
@@ -145,6 +151,10 @@ async def chat_message(request: ChatRequest, req: Request, user: dict = Depends(
                 break
         except Exception as e:
             # Log but don't fail the request if DB save fails
+            import traceback
             print(f"[Chat] Failed to save chat messages: {e}")
+            print(f"[Chat] Traceback: {traceback.format_exc()}")
+    else:
+        print("[Chat] Database not configured, skipping message save")
 
     return ChatResponse(response=response)
