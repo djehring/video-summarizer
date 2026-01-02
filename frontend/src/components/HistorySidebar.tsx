@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
-import { getHistory, deleteHistoryItem, getLogoutUrl, clearStoredToken, type HistoryItem, type User } from '../api/client';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { getHistory, deleteHistoryItem, getLogoutUrl, clearStoredToken, type HistoryItem, type User, type SortOption } from '../api/client';
+import { SettingsDialog } from './SettingsDialog';
 
 type ViewMode = 'initial' | 'summary' | 'chat';
 
@@ -109,6 +110,24 @@ const LogoutIcon = () => (
   </svg>
 );
 
+const SearchIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+  </svg>
+);
+
+const SortIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+  </svg>
+);
+
+const ClearIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+  </svg>
+);
+
 export function HistorySidebar({
   onSelectItem,
   selectedJobId,
@@ -126,46 +145,66 @@ export function HistorySidebar({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [desktopCollapsed, setDesktopCollapsed] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortOption, setSortOption] = useState<SortOption>('date');
+  const [showSortMenu, setShowSortMenu] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const collapsedUserMenuRef = useRef<HTMLDivElement>(null);
+  const sortMenuRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    loadHistory();
-  }, [refreshTrigger]);
-
-  // Notify parent of collapsed state changes
-  useEffect(() => {
-    onCollapsedChange?.(desktopCollapsed);
-  }, [desktopCollapsed, onCollapsedChange]);
-
-  // Close user menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node;
-      const clickedInExpandedMenu = userMenuRef.current?.contains(target);
-      const clickedInCollapsedMenu = collapsedUserMenuRef.current?.contains(target);
-
-      if (!clickedInExpandedMenu && !clickedInCollapsedMenu) {
-        setUserMenuOpen(false);
-      }
-    };
-
-    if (userMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [userMenuOpen]);
-
-  const loadHistory = async () => {
+  // Memoize loadHistory to avoid dependency issues
+  const loadHistory = useCallback(async (search?: string, sort?: SortOption) => {
     try {
-      const response = await getHistory();
+      setLoading(true);
+      const response = await getHistory(search, sort);
       setItems(response.items);
     } catch (error) {
       console.error('Failed to load history:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadHistory(searchQuery || undefined, sortOption);
+  }, [refreshTrigger, sortOption, loadHistory]);
+
+  // Debounced search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadHistory(searchQuery || undefined, sortOption);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery, sortOption, loadHistory]);
+
+  // Notify parent of collapsed state changes
+  useEffect(() => {
+    onCollapsedChange?.(desktopCollapsed);
+  }, [desktopCollapsed, onCollapsedChange]);
+
+  // Close menus when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      const clickedInExpandedMenu = userMenuRef.current?.contains(target);
+      const clickedInCollapsedMenu = collapsedUserMenuRef.current?.contains(target);
+      const clickedInSortMenu = sortMenuRef.current?.contains(target);
+
+      if (!clickedInExpandedMenu && !clickedInCollapsedMenu) {
+        setUserMenuOpen(false);
+      }
+      if (!clickedInSortMenu) {
+        setShowSortMenu(false);
+      }
+    };
+
+    if (userMenuOpen || showSortMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [userMenuOpen, showSortMenu]);
 
   const handleDelete = async (e: React.MouseEvent, jobId: string) => {
     e.stopPropagation();
@@ -255,16 +294,68 @@ export function HistorySidebar({
       {/* Divider */}
       <div className="border-t border-gray-200 mx-3 mb-2" />
 
-      {/* History section */}
-      <div className="px-3 mb-2">
-        <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide px-3">History</h3>
+      {/* History section with search and sort */}
+      <div className="px-3 mb-2 space-y-2">
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide">History</h3>
+          {/* Sort dropdown */}
+          <div className="relative" ref={sortMenuRef}>
+            <button
+              onClick={() => setShowSortMenu(!showSortMenu)}
+              className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+              title={`Sort by ${sortOption === 'date' ? 'date' : 'title'}`}
+            >
+              <SortIcon />
+            </button>
+            {showSortMenu && (
+              <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden z-10 min-w-[120px]">
+                <button
+                  onClick={() => { setSortOption('date'); setShowSortMenu(false); }}
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${sortOption === 'date' ? 'text-blue-600 bg-blue-50' : 'text-gray-700'}`}
+                >
+                  Date
+                </button>
+                <button
+                  onClick={() => { setSortOption('title'); setShowSortMenu(false); }}
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${sortOption === 'title' ? 'text-blue-600 bg-blue-50' : 'text-gray-700'}`}
+                >
+                  Title
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        {/* Search input */}
+        <div className="relative">
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+            <SearchIcon />
+          </div>
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search videos..."
+            className="w-full pl-9 pr-8 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+            >
+              <ClearIcon />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-3">
         {loading ? (
           <div className="p-3 text-sm text-gray-500">Loading...</div>
         ) : items.length === 0 ? (
-          <div className="p-3 text-sm text-gray-500">No history yet</div>
+          <div className="p-3 text-sm text-gray-500">
+            {searchQuery ? 'No videos found' : 'No history yet'}
+          </div>
         ) : (
           <div className="space-y-4">
             {groupOrder.map(group => {
@@ -345,7 +436,7 @@ export function HistorySidebar({
             <button
               onClick={() => {
                 setUserMenuOpen(false);
-                // TODO: Open settings modal
+                setSettingsOpen(true);
               }}
               className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
             >
@@ -487,7 +578,7 @@ export function HistorySidebar({
             <button
               onClick={() => {
                 setUserMenuOpen(false);
-                // TODO: Open settings modal
+                setSettingsOpen(true);
               }}
               className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
             >
@@ -552,6 +643,16 @@ export function HistorySidebar({
           {expandedContent}
         </div>
       </aside>
+
+      {/* Settings Dialog */}
+      <SettingsDialog
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onHistoryCleared={() => {
+          setItems([]);
+          setSettingsOpen(false);
+        }}
+      />
     </>
   );
 }

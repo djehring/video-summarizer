@@ -208,6 +208,14 @@ export interface HistoryListResponse {
   total: number;
 }
 
+export interface HistorySettings {
+  max_entries: number;
+  retention_days: number;
+  current_count: number;
+}
+
+export type SortOption = 'date' | 'title';
+
 export interface HistoryChatMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -228,8 +236,18 @@ export interface HistoryDetail {
   created_at: string;
 }
 
-export async function getHistory(): Promise<HistoryListResponse> {
-  const response = await fetch(`${API_BASE}/history`, {
+export async function getHistory(
+  search?: string,
+  sort: SortOption = 'date'
+): Promise<HistoryListResponse> {
+  const params = new URLSearchParams();
+  if (search) params.set('search', search);
+  if (sort) params.set('sort', sort);
+
+  const queryString = params.toString();
+  const url = queryString ? `${API_BASE}/history?${queryString}` : `${API_BASE}/history`;
+
+  const response = await fetch(url, {
     credentials: 'include',
     headers: getAuthHeaders(),
   });
@@ -263,4 +281,34 @@ export async function deleteHistoryItem(jobId: string): Promise<void> {
   if (!response.ok) {
     throw new Error('Failed to delete history item');
   }
+}
+
+export async function clearAllHistory(): Promise<{ deleted_count: number }> {
+  const response = await fetch(`${API_BASE}/history`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to clear history');
+  }
+  return response.json();
+}
+
+export async function getHistorySettings(): Promise<HistorySettings> {
+  const response = await fetch(`${API_BASE}/history/settings/info`, {
+    credentials: 'include',
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) {
+    if (response.status === 503) {
+      return { max_entries: 50, retention_days: 90, current_count: 0 };
+    }
+    throw new Error('Failed to get history settings');
+  }
+  return response.json();
+}
+
+export function getExportHistoryUrl(): string {
+  return `${API_BASE}/history/export/json`;
 }

@@ -93,7 +93,7 @@ async def require_auth(request: Request):
 def save_to_history_sync(job_id: str, result: VideoAnalysis, user_email: str):
     """Save analysis result to database (sync version for background tasks)."""
     import os
-    from sqlalchemy import create_engine
+    from sqlalchemy import create_engine, func
     from sqlalchemy.orm import sessionmaker
 
     db_url = os.getenv('DATABASE_URL', '')
@@ -106,10 +106,28 @@ def save_to_history_sync(job_id: str, result: VideoAnalysis, user_email: str):
     elif db_url.startswith('postgres://'):
         db_url = db_url.replace('postgres://', 'postgresql://', 1)
 
+    max_entries = int(os.getenv('HISTORY_MAX_ENTRIES', '50'))
+
     try:
         engine = create_engine(db_url)
         Session = sessionmaker(bind=engine)
         session = Session()
+
+        # Enforce storage limit: delete oldest entries if limit exceeded
+        current_count = session.query(func.count(VideoHistory.id)).filter(
+            VideoHistory.user_email == user_email
+        ).scalar() or 0
+
+        if current_count >= max_entries:
+            # Delete oldest entries to make room
+            entries_to_delete = current_count - max_entries + 1
+            oldest = session.query(VideoHistory).filter(
+                VideoHistory.user_email == user_email
+            ).order_by(VideoHistory.created_at.asc()).limit(entries_to_delete).all()
+
+            for entry in oldest:
+                session.delete(entry)
+            print(f"[DB] Deleted {len(oldest)} oldest entries to enforce limit")
 
         history = VideoHistory(
             user_email=user_email,

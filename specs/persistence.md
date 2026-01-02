@@ -208,12 +208,12 @@ interface HistoryEntry {
 - [x] Resume conversations seamlessly
 
 ### Phase 3 - Polish (2-3 hours)
-- [ ] Search history by title/channel
-- [ ] Sort options (date, title)
-- [ ] Bulk delete / clear all
-- [ ] Export history as JSON
-- [ ] Storage limits (e.g., 50 videos per user)
-- [ ] Auto-delete after 90 days (optional)
+- [x] Search history by title/channel
+- [x] Sort options (date, title)
+- [x] Bulk delete / clear all
+- [x] Export history as JSON
+- [x] Storage limits (e.g., 50 videos per user)
+- [x] Auto-delete after 90 days (optional - configured via HISTORY_RETENTION_DAYS env var)
 
 ## Configuration
 
