@@ -1,14 +1,20 @@
 import os
+from pathlib import Path
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.routers import videos, chat, auth, history
 from app.database import init_db, is_database_configured
 
 load_dotenv()
+
+# Static files directory (frontend build output)
+STATIC_DIR = Path(__file__).parent.parent / "static"
 
 
 @asynccontextmanager
@@ -68,3 +74,24 @@ app.include_router(history.router, prefix="/api/history", tags=["history"])
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+
+# Serve frontend static files (if available)
+if STATIC_DIR.exists():
+    # Mount static assets (js, css, images)
+    app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+
+    # Serve index.html for all non-API routes (SPA routing)
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # Don't serve index.html for API routes
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not found")
+
+        # Try to serve the exact file first
+        file_path = STATIC_DIR / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+
+        # Fallback to index.html for SPA routing
+        return FileResponse(STATIC_DIR / "index.html")
