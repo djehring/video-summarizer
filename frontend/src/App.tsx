@@ -162,11 +162,45 @@ function App() {
     setViewMode('initial');
   };
 
+  const handleRefreshSummary = async () => {
+    if (!analysis) return;
+
+    setIsLoading(true);
+    setStatus('Refreshing summary...');
+    setError(undefined);
+    setLoadedChatMessages(undefined);
+
+    try {
+      const job = await submitVideo(analysis.video.url, true); // force_refresh = true
+      setJobId(job.job_id);
+      setStatus('Processing video...');
+
+      const result = await pollUntilComplete(job.job_id, (j) => {
+        if (j.status === 'processing') {
+          setStatus('Downloading and analysing...');
+        }
+      });
+
+      if (result.result) {
+        setAnalysis(result.result);
+        setStatus(undefined);
+        setViewMode('summary');
+        // Refresh history after successful analysis
+        setHistoryRefresh(prev => prev + 1);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+      setStatus(undefined);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Loading state
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="text-gray-600">Loading...</div>
+      <div className="min-h-screen bg-gray-100 dark:bg-gray-950 flex items-center justify-center">
+        <div className="text-gray-600 dark:text-gray-300">Loading...</div>
       </div>
     );
   }
@@ -174,24 +208,24 @@ function App() {
   // Not logged in - show login screen
   if (!user) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4">
-        <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8 text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">
+      <div className="min-h-screen bg-gray-100 dark:bg-gray-950 flex items-center justify-center px-4">
+        <div className="max-w-md w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg p-8 text-center">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
             Video Summariser
           </h1>
-          <p className="text-gray-600 mb-6">
+          <p className="text-gray-600 dark:text-gray-300 mb-6">
             Extract transcripts and references from YouTube videos
           </p>
 
           {authError && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 mb-6 text-sm">
+            <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-lg p-4 text-red-700 dark:text-red-300 mb-6 text-sm">
               {authError}
             </div>
           )}
 
           <a
             href={getLoginUrl()}
-            className="inline-flex items-center gap-3 px-6 py-3 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 transition-colors"
+            className="inline-flex items-center gap-3 px-6 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -199,10 +233,10 @@ function App() {
               <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
               <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
             </svg>
-            <span className="text-gray-700 font-medium">Sign in with Google</span>
+            <span className="text-gray-700 dark:text-gray-200 font-medium">Sign in with Google</span>
           </a>
 
-          <p className="mt-6 text-xs text-gray-500">
+          <p className="mt-6 text-xs text-gray-500 dark:text-gray-400">
             Access is restricted to authorised users only.
           </p>
         </div>
@@ -212,7 +246,7 @@ function App() {
 
   // Logged in - show main app with sidebar
   return (
-    <div className="h-screen bg-gray-100 flex overflow-hidden">
+    <div className="h-screen bg-gray-100 dark:bg-gray-950 flex overflow-hidden">
       {/* History Sidebar */}
       <HistorySidebar
         onSelectItem={handleSelectHistory}
@@ -227,17 +261,17 @@ function App() {
       />
 
       {/* Main content area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-gray-100">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-gray-100 dark:bg-gray-950">
 
         {/* INITIAL MODE - Big header + search form */}
         {viewMode === 'initial' && (
           <>
-            <header className="shrink-0 bg-gray-100 pt-16 pb-4 px-4 lg:pl-8">
+            <header className="shrink-0 bg-gray-100 dark:bg-gray-950 pt-16 pb-4 px-4 lg:pl-8">
               <div className="max-w-2xl mx-auto text-center">
-                <h1 className="text-4xl font-bold text-gray-900 mb-3">
+                <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100 mb-3">
                   Video Summariser
                 </h1>
-                <p className="text-gray-600 text-lg">
+                <p className="text-gray-600 dark:text-gray-300 text-lg">
                   Extract transcripts and references from YouTube videos
                 </p>
               </div>
@@ -250,7 +284,7 @@ function App() {
                 </div>
 
                 {error && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+                  <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 rounded-lg p-4 text-red-700 dark:text-red-300">
                     {error}
                   </div>
                 )}
@@ -263,20 +297,24 @@ function App() {
         {viewMode === 'summary' && analysis && jobId && (
           <>
             {/* Compact header */}
-            <header className="shrink-0 bg-white border-b border-gray-200 px-4 lg:px-8 py-3">
+            <header className="shrink-0 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 lg:px-8 py-3">
               <div className={`mx-auto ${sidebarCollapsed ? 'max-w-6xl' : 'max-w-5xl'}`}>
                 <div className="min-w-0">
-                  <h1 className="text-lg font-semibold text-gray-900 truncate">
+                  <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate">
                     {analysis.video.title}
                   </h1>
-                  <p className="text-sm text-gray-500 truncate">{analysis.video.channel}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{analysis.video.channel}</p>
                 </div>
               </div>
             </header>
 
             <main className="flex-1 overflow-auto px-4 lg:px-8 py-6">
               <div className={`mx-auto ${sidebarCollapsed ? 'max-w-5xl' : 'max-w-4xl'}`}>
-                <SummaryView analysis={analysis} />
+                <SummaryView
+                  analysis={analysis}
+                  onRefresh={handleRefreshSummary}
+                  isRefreshing={isLoading}
+                />
               </div>
             </main>
           </>
@@ -286,9 +324,9 @@ function App() {
         {viewMode === 'chat' && analysis && jobId && (
           <>
             {/* Minimal header */}
-            <header className="shrink-0 bg-white border-b border-gray-200 px-4 lg:px-8 py-3">
+            <header className="shrink-0 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 lg:px-8 py-3">
               <div className={`mx-auto ${sidebarCollapsed ? 'max-w-5xl' : 'max-w-4xl'}`}>
-                <h1 className="text-sm font-medium text-gray-700 truncate">
+                <h1 className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">
                   {analysis.video.title}
                 </h1>
               </div>
@@ -308,8 +346,8 @@ function App() {
 
         {/* Loading overlay for mode transitions */}
         {isLoading && viewMode !== 'initial' && (
-          <div className="absolute inset-0 bg-gray-100/80 flex items-center justify-center">
-            <div className="text-gray-600">{status || 'Loading...'}</div>
+          <div className="absolute inset-0 bg-gray-100/80 dark:bg-gray-950/70 flex items-center justify-center">
+            <div className="text-gray-600 dark:text-gray-300">{status || 'Loading...'}</div>
           </div>
         )}
       </div>

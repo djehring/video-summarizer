@@ -208,9 +208,9 @@ async def analyze_video(
     """Submit a YouTube URL for analysis. Returns a job ID to poll for results."""
     user_email = user.get('email', '')
 
-    # Check if video already exists in user's history
+    # Check if video already exists in user's history (unless force_refresh is True)
     video_id = extract_video_id(request.url)
-    if video_id and is_database_configured():
+    if not request.force_refresh and video_id and is_database_configured():
         existing = check_existing_history(video_id, user_email)
         if existing:
             job_id, analysis = existing

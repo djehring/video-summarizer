@@ -12,6 +12,7 @@ class JobStatus(str, Enum):
 
 class VideoRequest(BaseModel):
     url: str
+    force_refresh: bool = False
 
 
 class VideoMetadata(BaseModel):

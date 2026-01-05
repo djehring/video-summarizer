@@ -169,7 +169,7 @@ export function HistorySidebar({
 
   useEffect(() => {
     loadHistory(searchQuery || undefined, sortOption);
-  }, [refreshTrigger, sortOption, loadHistory]);
+  }, [refreshTrigger, sortOption, searchQuery, loadHistory]);
 
   // Debounced search
   useEffect(() => {
@@ -226,23 +226,23 @@ export function HistorySidebar({
 
   // Expanded sidebar content
   const expandedContent = (
-    <div className="h-full flex flex-col bg-white">
+    <div className="h-full flex flex-col bg-white dark:bg-gray-900">
       {/* Header with logo and toggle */}
       <div className="p-4 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-gray-700">
+        <div className="flex items-center gap-2 text-gray-700 dark:text-gray-200">
           <AppLogo />
           <span className="font-semibold text-lg">Video Summariser</span>
         </div>
         <button
           onClick={() => setDesktopCollapsed(true)}
-          className="hidden lg:flex p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+          className="hidden lg:flex p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
           title="Hide sidebar"
         >
           <SidebarIcon />
         </button>
         <button
           onClick={() => setIsOpen(false)}
-          className="lg:hidden p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+          className="lg:hidden p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -254,7 +254,7 @@ export function HistorySidebar({
       <div className="px-3 mb-2">
         <button
           onClick={onNewAnalysis}
-          className="w-full flex items-center gap-3 px-3 py-2.5 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+          className="w-full flex items-center gap-3 px-3 py-2.5 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
         >
           <PlusIcon />
           <span className="font-medium">New Video</span>
@@ -264,13 +264,13 @@ export function HistorySidebar({
       {/* View mode toggle - only show when video is selected */}
       {hasVideo && (
         <div className="px-3 mb-3">
-          <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
+          <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg">
             <button
               onClick={() => onViewModeChange('summary')}
               className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                 viewMode === 'summary'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm'
+                  : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100'
               }`}
             >
               <SummaryIcon />
@@ -280,8 +280,8 @@ export function HistorySidebar({
               onClick={() => onViewModeChange('chat')}
               className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                 viewMode === 'chat'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm'
+                  : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100'
               }`}
             >
               <ChatIcon />
@@ -292,7 +292,7 @@ export function HistorySidebar({
       )}
 
       {/* Divider */}
-      <div className="border-t border-gray-200 mx-3 mb-2" />
+      <div className="border-t border-gray-200 dark:border-gray-800 mx-3 mb-2" />
 
       {/* History section with search and sort */}
       <div className="px-3 mb-2 space-y-2">
@@ -302,22 +302,30 @@ export function HistorySidebar({
           <div className="relative" ref={sortMenuRef}>
             <button
               onClick={() => setShowSortMenu(!showSortMenu)}
-              className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+              className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
               title={`Sort by ${sortOption === 'date' ? 'date' : 'title'}`}
             >
               <SortIcon />
             </button>
             {showSortMenu && (
-              <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden z-10 min-w-[120px]">
+              <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-900 rounded-lg shadow-lg border border-gray-200 dark:border-gray-800 overflow-hidden z-10 min-w-[120px]">
                 <button
                   onClick={() => { setSortOption('date'); setShowSortMenu(false); }}
-                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${sortOption === 'date' ? 'text-blue-600 bg-blue-50' : 'text-gray-700'}`}
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 ${
+                    sortOption === 'date'
+                      ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40'
+                      : 'text-gray-700 dark:text-gray-200'
+                  }`}
                 >
                   Date
                 </button>
                 <button
                   onClick={() => { setSortOption('title'); setShowSortMenu(false); }}
-                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${sortOption === 'title' ? 'text-blue-600 bg-blue-50' : 'text-gray-700'}`}
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 ${
+                    sortOption === 'title'
+                      ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40'
+                      : 'text-gray-700 dark:text-gray-200'
+                  }`}
                 >
                   Title
                 </button>
@@ -336,12 +344,12 @@ export function HistorySidebar({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search videos..."
-            className="w-full pl-9 pr-8 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+            className="w-full pl-9 pr-8 py-2 text-sm bg-gray-100 dark:bg-gray-800 border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
             >
               <ClearIcon />
             </button>
@@ -351,9 +359,9 @@ export function HistorySidebar({
 
       <div className="flex-1 overflow-y-auto px-3">
         {loading ? (
-          <div className="p-3 text-sm text-gray-500">Loading...</div>
+          <div className="p-3 text-sm text-gray-500 dark:text-gray-400">Loading...</div>
         ) : items.length === 0 ? (
-          <div className="p-3 text-sm text-gray-500">
+          <div className="p-3 text-sm text-gray-500 dark:text-gray-400">
             {searchQuery ? 'No videos found' : 'No history yet'}
           </div>
         ) : (
@@ -371,21 +379,21 @@ export function HistorySidebar({
                     <button
                       key={item.job_id}
                       onClick={() => onSelectItem(item.job_id)}
-                      className={`w-full text-left px-3 py-2 hover:bg-gray-100 rounded-lg transition-colors group ${
-                        selectedJobId === item.job_id ? 'bg-blue-50' : ''
+                      className={`w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors group ${
+                        selectedJobId === item.job_id ? 'bg-blue-50 dark:bg-blue-950/40' : ''
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-gray-900 truncate">
+                          <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                             {item.title || 'Untitled'}
                           </div>
-                          <div className="text-xs text-gray-500 truncate">
+                          <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
                             {item.channel}
                             {item.duration ? ` · ${formatDuration(item.duration)}` : ''}
                           </div>
                           {item.message_count > 0 && (
-                            <div className="text-xs text-blue-600 mt-0.5">
+                            <div className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
                               {item.message_count} message{item.message_count !== 1 ? 's' : ''}
                             </div>
                           )}
@@ -393,7 +401,7 @@ export function HistorySidebar({
                         <button
                           onClick={(e) => handleDelete(e, item.job_id)}
                           disabled={deletingId === item.job_id}
-                          className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-all"
+                          className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-all"
                           title="Delete"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -411,10 +419,10 @@ export function HistorySidebar({
       </div>
 
       {/* User footer with popup menu */}
-      <div className="shrink-0 border-t border-gray-200 p-4 relative" ref={userMenuRef}>
+      <div className="shrink-0 border-t border-gray-200 dark:border-gray-800 p-4 relative" ref={userMenuRef}>
         <button
           onClick={() => setUserMenuOpen(!userMenuOpen)}
-          className="w-full flex items-center gap-3 p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          className="w-full flex items-center gap-3 p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
         >
           <img
             src={user.picture}
@@ -422,8 +430,8 @@ export function HistorySidebar({
             className="w-8 h-8 rounded-full"
           />
           <div className="flex-1 min-w-0 text-left">
-            <div className="text-sm font-medium text-gray-900 truncate">{user.name}</div>
-            <div className="text-xs text-gray-500 truncate">{user.email}</div>
+            <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{user.name}</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</div>
           </div>
           <svg className={`w-4 h-4 text-gray-400 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
@@ -432,25 +440,25 @@ export function HistorySidebar({
 
         {/* Popup menu */}
         {userMenuOpen && (
-          <div className="absolute bottom-full left-4 right-4 mb-2 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
+          <div className="absolute bottom-full left-4 right-4 mb-2 bg-white dark:bg-gray-900 rounded-lg shadow-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
             <button
               onClick={() => {
                 setUserMenuOpen(false);
                 setSettingsOpen(true);
               }}
-              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               <SettingsIcon />
               <span>Settings</span>
             </button>
-            <div className="border-t border-gray-100" />
+            <div className="border-t border-gray-100 dark:border-gray-800" />
             <a
               href={getLogoutUrl()}
               onClick={() => {
                 clearStoredToken();
                 setUserMenuOpen(false);
               }}
-              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               <LogoutIcon />
               <span>Log out</span>
@@ -463,11 +471,11 @@ export function HistorySidebar({
 
   // Collapsed sidebar content (icon strip)
   const collapsedContent = (
-    <div className="h-full flex flex-col items-center bg-white py-4">
+    <div className="h-full flex flex-col items-center bg-white dark:bg-gray-900 py-4">
       {/* Logo - swaps to sidebar icon on hover */}
       <button
         onClick={() => setDesktopCollapsed(false)}
-        className="mb-4 p-1 text-gray-700 hover:text-gray-900 transition-colors relative group"
+        className="mb-4 p-1 text-gray-700 dark:text-gray-200 hover:text-gray-900 dark:hover:text-gray-100 transition-colors relative group"
         title="Open sidebar"
       >
         {/* Default: App logo */}
@@ -482,7 +490,7 @@ export function HistorySidebar({
           </svg>
         </div>
         {/* Tooltip */}
-        <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+        <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
           Open sidebar
         </div>
       </button>
@@ -490,7 +498,7 @@ export function HistorySidebar({
       {/* New Video */}
       <button
         onClick={onNewAnalysis}
-        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors mb-2"
+        className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors mb-2"
         title="New Video"
       >
         <PlusIcon />
@@ -504,7 +512,7 @@ export function HistorySidebar({
             className={`p-2 rounded-lg transition-colors mb-1 ${
               viewMode === 'summary'
                 ? 'bg-blue-100 text-blue-600'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
             }`}
             title="Summary"
           >
@@ -515,7 +523,7 @@ export function HistorySidebar({
             className={`p-2 rounded-lg transition-colors mb-2 ${
               viewMode === 'chat'
                 ? 'bg-blue-100 text-blue-600'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
             }`}
             title="Chat"
           >
@@ -525,7 +533,7 @@ export function HistorySidebar({
       )}
 
       {/* Divider */}
-      <div className="w-8 border-t border-gray-200 my-2" />
+      <div className="w-8 border-t border-gray-200 dark:border-gray-800 my-2" />
 
       {/* History items as icons */}
       <div className="flex-1 overflow-y-auto flex flex-col items-center gap-1 w-full px-2">
@@ -536,7 +544,7 @@ export function HistorySidebar({
             className={`p-2 rounded-lg transition-colors ${
               selectedJobId === item.job_id
                 ? 'bg-blue-100 text-blue-600'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
             }`}
             title={item.title || 'Untitled'}
           >
@@ -549,7 +557,7 @@ export function HistorySidebar({
       </div>
 
       {/* User avatar with popup menu */}
-      <div className="mt-auto pt-4 border-t border-gray-200 w-full flex justify-center relative" ref={collapsedUserMenuRef}>
+      <div className="mt-auto pt-4 border-t border-gray-200 dark:border-gray-800 w-full flex justify-center relative" ref={collapsedUserMenuRef}>
         <button
           onClick={() => setUserMenuOpen(!userMenuOpen)}
           className="relative group"
@@ -561,7 +569,7 @@ export function HistorySidebar({
           />
           {/* Username tooltip on hover */}
           {!userMenuOpen && (
-            <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+            <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
               {user.name}
             </div>
           )}
@@ -569,30 +577,30 @@ export function HistorySidebar({
 
         {/* Popup menu - positioned to the right of avatar */}
         {userMenuOpen && (
-          <div className="absolute bottom-0 left-full ml-2 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden min-w-[200px] z-50">
+          <div className="absolute bottom-0 left-full ml-2 bg-white dark:bg-gray-900 rounded-lg shadow-lg border border-gray-200 dark:border-gray-800 overflow-hidden min-w-[200px] z-50">
             {/* User info header */}
-            <div className="px-4 py-3 border-b border-gray-100">
-              <div className="text-sm font-medium text-gray-900">{user.name}</div>
-              <div className="text-xs text-gray-500">{user.email}</div>
+            <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+              <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{user.name}</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">{user.email}</div>
             </div>
             <button
               onClick={() => {
                 setUserMenuOpen(false);
                 setSettingsOpen(true);
               }}
-              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               <SettingsIcon />
               <span>Settings</span>
             </button>
-            <div className="border-t border-gray-100" />
+            <div className="border-t border-gray-100 dark:border-gray-800" />
             <a
               href={getLogoutUrl()}
               onClick={() => {
                 clearStoredToken();
                 setUserMenuOpen(false);
               }}
-              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               <LogoutIcon />
               <span>Log out</span>
@@ -609,9 +617,9 @@ export function HistorySidebar({
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-md"
+          className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-md"
         >
-          <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-6 h-6 text-gray-600 dark:text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
@@ -629,7 +637,7 @@ export function HistorySidebar({
       <aside
         className={`
           fixed lg:static inset-y-0 left-0 z-40
-          h-full bg-white border-r border-gray-200 lg:shrink-0
+          h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 lg:shrink-0
           transform transition-all duration-200 ease-in-out
           ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
           ${desktopCollapsed ? 'lg:w-16' : 'lg:w-72'}

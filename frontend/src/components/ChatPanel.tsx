@@ -26,7 +26,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="absolute top-2 right-2 p-1.5 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors"
+      className="absolute top-2 right-2 p-1.5 rounded-md bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
       title="Copy to clipboard"
     >
       {copied ? (
@@ -117,15 +117,15 @@ export function ChatPanel({ jobId, initialMessages, fullScreen = false }: ChatPa
   };
 
   const containerClass = fullScreen
-    ? "bg-gray-50 flex flex-col h-full"
-    : "bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col h-full min-h-[400px] max-h-[calc(100vh-200px)]";
+    ? "bg-gray-50 dark:bg-gray-950 flex flex-col h-full"
+    : "bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-sm flex flex-col h-full min-h-[400px] max-h-[calc(100vh-200px)]";
 
   return (
     <div className={containerClass}>
       {/* Header - only show when not fullScreen */}
       {!fullScreen && (
-        <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between shrink-0">
-          <h3 className="font-semibold text-gray-800">AI Assistant</h3>
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between shrink-0">
+          <h3 className="font-semibold text-gray-800 dark:text-gray-100">AI Assistant</h3>
           {messages.length === 0 && (
             <button
               onClick={handleGenerateSummary}
@@ -141,7 +141,7 @@ export function ChatPanel({ jobId, initialMessages, fullScreen = false }: ChatPa
       {/* Messages */}
       <div className={`flex-1 overflow-y-auto space-y-4 min-h-0 ${fullScreen ? 'px-4 py-6' : 'p-4'}`}>
         {messages.length === 0 ? (
-          <div className={`text-center text-gray-500 ${fullScreen ? 'mt-16' : 'mt-8'}`}>
+          <div className={`text-center text-gray-500 dark:text-gray-400 ${fullScreen ? 'mt-16' : 'mt-8'}`}>
             <p className="mb-4 text-lg">Ask questions about this video</p>
             <p className="text-sm mb-6">Or generate an AI summary to get started</p>
             {fullScreen && (
@@ -165,18 +165,18 @@ export function ChatPanel({ jobId, initialMessages, fullScreen = false }: ChatPa
                   msg.role === 'user'
                     ? 'bg-blue-600 text-white max-w-[80%] px-4 py-2'
                     : fullScreen
-                      ? 'bg-white text-gray-800 border border-gray-200 max-w-[85%] px-4 py-3 pr-10 shadow-sm'
-                      : 'bg-gray-50 text-gray-800 border border-gray-200 max-w-full px-4 py-2 pr-10'
+                      ? 'bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 border border-gray-200 dark:border-gray-800 max-w-[85%] px-4 py-3 pr-10 shadow-sm'
+                      : 'bg-gray-50 dark:bg-gray-800/60 text-gray-800 dark:text-gray-100 border border-gray-200 dark:border-gray-800 max-w-full px-4 py-2 pr-10'
                 }`}
               >
                 {msg.role === 'assistant' && <CopyButton text={msg.content} />}
                 {msg.role === 'assistant' ? (
-                  <div className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-700 prose-li:text-gray-700 prose-table:text-sm">
+                  <div className="prose prose-sm max-w-none dark:prose-invert prose-table:text-sm">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
                         a: ({ href, children }) => (
-                          <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                          <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">
                             {children}
                           </a>
                         )
@@ -194,7 +194,7 @@ export function ChatPanel({ jobId, initialMessages, fullScreen = false }: ChatPa
         )}
         {isLoading && (
           <div className="flex justify-start">
-            <div className="bg-gray-100 text-gray-800 px-4 py-2 rounded-lg">
+            <div className="bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 px-4 py-2 rounded-lg">
               <div className="flex items-center space-x-2">
                 <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
                 <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
@@ -208,21 +208,21 @@ export function ChatPanel({ jobId, initialMessages, fullScreen = false }: ChatPa
 
       {/* Error */}
       {error && (
-        <div className="px-4 py-2 bg-red-50 border-t border-red-200 text-red-700 text-sm shrink-0">
+        <div className="px-4 py-2 bg-red-50 dark:bg-red-950/40 border-t border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 text-sm shrink-0">
           {error}
         </div>
       )}
 
       {/* Input */}
-      <form onSubmit={handleSendMessage} className={`shrink-0 ${fullScreen ? 'p-4 bg-gray-50' : 'p-4 border-t border-gray-200'}`}>
+      <form onSubmit={handleSendMessage} className={`shrink-0 ${fullScreen ? 'p-4 bg-gray-50 dark:bg-gray-950' : 'p-4 border-t border-gray-200 dark:border-gray-800'}`}>
         <div className={`flex gap-2 ${fullScreen ? 'max-w-3xl mx-auto' : ''}`}>
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask about the video..."
-            className={`flex-1 px-4 py-2 border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 ${
-              fullScreen ? 'rounded-full bg-white shadow-sm' : 'rounded-lg'
+            className={`flex-1 px-4 py-2 border border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-gray-100 ${
+              fullScreen ? 'rounded-full bg-white dark:bg-gray-900 shadow-sm' : 'rounded-lg bg-white dark:bg-gray-900'
             }`}
             disabled={isLoading}
           />

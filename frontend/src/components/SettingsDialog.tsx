@@ -6,6 +6,12 @@ import {
   getStoredToken,
   type HistorySettings
 } from '../api/client';
+import {
+  applyThemePreference,
+  getStoredThemePreference,
+  setStoredThemePreference,
+  type ThemePreference
+} from '../theme';
 
 interface SettingsDialogProps {
   isOpen: boolean;
@@ -44,11 +50,14 @@ export function SettingsDialog({ isOpen, onClose, onHistoryCleared }: SettingsDi
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [themePref, setThemePref] = useState<ThemePreference>(() => getStoredThemePreference());
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isOpen) {
       loadSettings();
+      // Re-sync when opening in case it changed elsewhere
+      setThemePref(getStoredThemePreference());
     }
   }, [isOpen]);
 
@@ -155,14 +164,14 @@ export function SettingsDialog({ isOpen, onClose, onHistoryCleared }: SettingsDi
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div
         ref={dialogRef}
-        className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden"
+        className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md overflow-hidden border border-transparent dark:border-gray-800"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Settings</h2>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Settings</h2>
           <button
             onClick={onClose}
-            className="p-1 text-gray-400 hover:text-gray-600 transition-colors rounded-lg hover:bg-gray-100"
+            className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             <CloseIcon />
           </button>
@@ -171,20 +180,47 @@ export function SettingsDialog({ isOpen, onClose, onHistoryCleared }: SettingsDi
         {/* Content */}
         <div className="px-6 py-5 space-y-6">
           {loading ? (
-            <div className="text-center py-8 text-gray-500">Loading...</div>
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400">Loading...</div>
           ) : (
             <>
+              {/* Appearance */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-3">Appearance</h3>
+                <div className="bg-gray-50 dark:bg-gray-800/60 rounded-lg p-4 space-y-2">
+                  <label className="block text-sm text-gray-600 dark:text-gray-300">
+                    Theme
+                  </label>
+                  <select
+                    value={themePref}
+                    onChange={(e) => {
+                      const pref = e.target.value as ThemePreference;
+                      setThemePref(pref);
+                      setStoredThemePreference(pref);
+                      applyThemePreference(pref);
+                    }}
+                    className="w-full px-3 py-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                    <option value="system">Same as OS</option>
+                  </select>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    “Same as OS” follows your system appearance setting.
+                  </p>
+                </div>
+              </div>
+
               {/* Storage Usage Section */}
               <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-3">Storage Usage</h3>
-                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-3">Storage Usage</h3>
+                <div className="bg-gray-50 dark:bg-gray-800/60 rounded-lg p-4 space-y-3">
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Videos stored</span>
-                    <span className="font-medium text-gray-900">
+                    <span className="text-gray-600 dark:text-gray-300">Videos stored</span>
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
                       {settings?.current_count ?? 0} / {settings?.max_entries ?? 50}
                     </span>
                   </div>
-                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                     <div
                       className={`h-full transition-all ${
                         usagePercent > 80 ? 'bg-red-500' : usagePercent > 50 ? 'bg-yellow-500' : 'bg-blue-500'
@@ -192,7 +228,7 @@ export function SettingsDialog({ isOpen, onClose, onHistoryCleared }: SettingsDi
                       style={{ width: `${Math.min(usagePercent, 100)}%` }}
                     />
                   </div>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
                     Oldest videos are automatically removed when the limit is reached.
                   </p>
                 </div>
@@ -200,43 +236,43 @@ export function SettingsDialog({ isOpen, onClose, onHistoryCleared }: SettingsDi
 
               {/* Retention Info */}
               <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-3">Data Retention</h3>
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-sm text-gray-600">
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-3">Data Retention</h3>
+                <div className="bg-gray-50 dark:bg-gray-800/60 rounded-lg p-4">
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
                     Videos and chat history are stored for up to{' '}
-                    <span className="font-medium text-gray-900">{settings?.retention_days ?? 90} days</span>.
+                    <span className="font-medium text-gray-900 dark:text-gray-100">{settings?.retention_days ?? 90} days</span>.
                   </p>
                 </div>
               </div>
 
               {/* API Status */}
               <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-3">API Integrations</h3>
-                <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-3">API Integrations</h3>
+                <div className="bg-gray-50 dark:bg-gray-800/60 rounded-lg p-4 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">OpenAI (Chat & Summaries)</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-300">OpenAI (Chat & Summaries)</span>
                     {settings?.api_status?.openai ? (
                       <span className="flex items-center gap-1 text-sm text-green-600 font-medium">
                         <span className="w-2 h-2 bg-green-500 rounded-full"></span>
                         Connected
                       </span>
                     ) : (
-                      <span className="flex items-center gap-1 text-sm text-gray-400">
-                        <span className="w-2 h-2 bg-gray-300 rounded-full"></span>
+                      <span className="flex items-center gap-1 text-sm text-gray-400 dark:text-gray-500">
+                        <span className="w-2 h-2 bg-gray-300 dark:bg-gray-600 rounded-full"></span>
                         Not configured
                       </span>
                     )}
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Exa AI (Study Links)</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-300">Exa AI (Study Links)</span>
                     {settings?.api_status?.exa ? (
                       <span className="flex items-center gap-1 text-sm text-green-600 font-medium">
                         <span className="w-2 h-2 bg-green-500 rounded-full"></span>
                         Connected
                       </span>
                     ) : (
-                      <span className="flex items-center gap-1 text-sm text-gray-400">
-                        <span className="w-2 h-2 bg-gray-300 rounded-full"></span>
+                      <span className="flex items-center gap-1 text-sm text-gray-400 dark:text-gray-500">
+                        <span className="w-2 h-2 bg-gray-300 dark:bg-gray-600 rounded-full"></span>
                         Not configured
                       </span>
                     )}
@@ -246,13 +282,13 @@ export function SettingsDialog({ isOpen, onClose, onHistoryCleared }: SettingsDi
 
               {/* Actions */}
               <div className="space-y-3">
-                <h3 className="text-sm font-medium text-gray-700">Actions</h3>
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200">Actions</h3>
 
                 {/* Export Button */}
                 <button
                   onClick={handleExport}
                   disabled={exporting || (settings?.current_count ?? 0) === 0}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 disabled:text-gray-400 text-gray-700 rounded-lg transition-colors font-medium"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 disabled:bg-gray-50 dark:disabled:bg-gray-800/50 disabled:text-gray-400 text-gray-700 dark:text-gray-200 rounded-lg transition-colors font-medium"
                 >
                   <DownloadIcon />
                   <span>{exporting ? 'Exporting...' : 'Export History as JSON'}</span>
@@ -262,7 +298,7 @@ export function SettingsDialog({ isOpen, onClose, onHistoryCleared }: SettingsDi
                 <button
                   onClick={() => setShowClearConfirm(true)}
                   disabled={(settings?.current_count ?? 0) === 0}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-50 hover:bg-red-100 disabled:bg-gray-50 disabled:text-gray-400 text-red-600 rounded-lg transition-colors font-medium"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-950/60 disabled:bg-gray-50 dark:disabled:bg-gray-800/50 disabled:text-gray-400 text-red-600 dark:text-red-400 rounded-lg transition-colors font-medium"
                 >
                   <TrashIcon />
                   <span>Clear All History</span>
@@ -275,12 +311,12 @@ export function SettingsDialog({ isOpen, onClose, onHistoryCleared }: SettingsDi
         {/* Clear Confirmation Modal */}
         {showClearConfirm && (
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full text-center">
+            <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl p-6 max-w-sm w-full text-center border border-transparent dark:border-gray-800">
               <div className="flex justify-center mb-4">
                 <WarningIcon />
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Clear All History?</h3>
-              <p className="text-sm text-gray-600 mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Clear All History?</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
                 This will permanently delete all {settings?.current_count ?? 0} videos and their chat history.
                 This action cannot be undone.
               </p>
@@ -288,7 +324,7 @@ export function SettingsDialog({ isOpen, onClose, onHistoryCleared }: SettingsDi
                 <button
                   onClick={() => setShowClearConfirm(false)}
                   disabled={clearing}
-                  className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
+                  className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition-colors"
                 >
                   Cancel
                 </button>

@@ -3,6 +3,8 @@ import type { VideoAnalysis, EnrichedReference } from '../api/client';
 
 interface SummaryViewProps {
   analysis: VideoAnalysis;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
 function formatDuration(seconds: number): string {
@@ -42,27 +44,27 @@ function ReferenceSection({ title, items, icon, type }: { title: string; items: 
   if (items.length === 0) return null;
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden">
+    <div className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-4 py-3 bg-gray-50 flex items-center justify-between hover:bg-gray-100 transition-colors"
+        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/60 flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
       >
-        <span className="font-medium text-gray-700">
+        <span className="font-medium text-gray-700 dark:text-gray-200">
           {icon} {title} ({items.length})
         </span>
-        <span className="text-gray-500">{isOpen ? '−' : '+'}</span>
+        <span className="text-gray-500 dark:text-gray-400">{isOpen ? '−' : '+'}</span>
       </button>
       {isOpen && (
         <ul className="px-4 py-3 space-y-1">
           {items.map((item, i) => (
-            <li key={i} className="text-gray-600">
+            <li key={i} className="text-gray-600 dark:text-gray-300">
               •{' '}
               {isUrl(item) ? (
                 <a
                   href={item}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline break-all"
+                  className="text-blue-600 dark:text-blue-400 hover:underline break-all"
                 >
                   {item}
                 </a>
@@ -71,7 +73,7 @@ function ReferenceSection({ title, items, icon, type }: { title: string; items: 
                   href={getSearchUrl(item, type)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline"
+                  className="text-blue-600 dark:text-blue-400 hover:underline"
                 >
                   {item}
                 </a>
@@ -91,7 +93,7 @@ function ConfidenceIndicator({ confidence }: { confidence: number }) {
   if (confidence >= 0.5) {
     return <span className="ml-1 text-yellow-600 text-xs" title="Possible match">~</span>;
   }
-  return <span className="ml-1 text-gray-400 text-xs" title="Low confidence">?</span>;
+  return <span className="ml-1 text-gray-400 dark:text-gray-500 text-xs" title="Low confidence">?</span>;
 }
 
 function StudiesSection({
@@ -122,20 +124,20 @@ function StudiesSection({
   const enrichedCount = enriched?.filter(e => e.enriched_url)?.length || 0;
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden">
+    <div className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-4 py-3 bg-gray-50 flex items-center justify-between hover:bg-gray-100 transition-colors"
+        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/60 flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
       >
-        <span className="font-medium text-gray-700">
+        <span className="font-medium text-gray-700 dark:text-gray-200">
           📚 Studies & Papers ({studies.length})
           {enrichedCount > 0 && (
-            <span className="ml-2 text-xs text-green-600">
+            <span className="ml-2 text-xs text-green-600 dark:text-green-400">
               {enrichedCount} with sources
             </span>
           )}
         </span>
-        <span className="text-gray-500">{isOpen ? '−' : '+'}</span>
+        <span className="text-gray-500 dark:text-gray-400">{isOpen ? '−' : '+'}</span>
       </button>
       {isOpen && (
         <ul className="px-4 py-3 space-y-2">
@@ -149,7 +151,7 @@ function StudiesSection({
                 (enrichedData.enriched_url ? getHostLabel(enrichedData.enriched_url) : '');
 
               return (
-                <li key={i} className="text-gray-600">
+                <li key={i} className="text-gray-600 dark:text-gray-300">
                   <div className="flex items-start gap-1">
                     <span>•</span>
                     <div className="flex-1">
@@ -157,13 +159,13 @@ function StudiesSection({
                         href={enrichedData.enriched_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline"
+                        className="text-blue-600 dark:text-blue-400 hover:underline"
                       >
                         {enrichedData.enriched_title || study}
                       </a>
                       <ConfidenceIndicator confidence={enrichedData.confidence} />
                       {journalLabel && (
-                        <span className="block text-xs text-gray-400 mt-0.5">
+                        <span className="block text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                           {journalLabel}
                         </span>
                       )}
@@ -175,13 +177,13 @@ function StudiesSection({
 
             // Fallback to Google Scholar search
             return (
-              <li key={i} className="text-gray-600">
+              <li key={i} className="text-gray-600 dark:text-gray-300">
                 •{' '}
                 <a
                   href={getSearchUrl(study, 'studies')}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline"
+                  className="text-blue-600 dark:text-blue-400 hover:underline"
                 >
                   {study}
                 </a>
@@ -194,7 +196,7 @@ function StudiesSection({
   );
 }
 
-export function SummaryView({ analysis }: SummaryViewProps) {
+export function SummaryView({ analysis, onRefresh, isRefreshing }: SummaryViewProps) {
   const [showTranscript, setShowTranscript] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -209,22 +211,47 @@ export function SummaryView({ analysis }: SummaryViewProps) {
   return (
     <div className="w-full max-w-4xl space-y-6">
       {/* Video Metadata */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">{video.title}</h2>
-        <div className="flex flex-wrap gap-4 text-sm text-gray-600 mb-4">
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-6 shadow-sm">
+        <div className="flex items-start justify-between mb-2">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex-1">{video.title}</h2>
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              disabled={isRefreshing}
+              className="ml-4 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              title="Refresh summary"
+            >
+              <svg
+                className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+              {isRefreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-300 mb-4">
           <span>Channel: <strong>{video.channel}</strong></span>
           <span>Duration: <strong>{formatDuration(video.duration)}</strong></span>
           <a
             href={video.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-600 hover:underline"
+            className="text-blue-600 dark:text-blue-400 hover:underline"
           >
             Watch on YouTube
           </a>
         </div>
         {synopsis && (
-          <p className="text-gray-700 leading-relaxed border-t border-gray-100 pt-4">
+          <p className="text-gray-700 dark:text-gray-200 leading-relaxed border-t border-gray-100 dark:border-gray-800 pt-4">
             {synopsis}
           </p>
         )}
@@ -232,20 +259,19 @@ export function SummaryView({ analysis }: SummaryViewProps) {
 
       {/* References */}
       <div className="space-y-3">
-        <h3 className="text-lg font-semibold text-gray-800">Extracted References</h3>
+        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Extracted References</h3>
         <StudiesSection studies={references.studies} enriched={references.studies_enriched} />
         <ReferenceSection title="People Mentioned" items={references.people} icon="👤" type="people" />
         <ReferenceSection title="Books" items={references.books} icon="📖" type="books" />
         <ReferenceSection title="Organizations" items={references.organizations} icon="🏛️" type="organizations" />
         <ReferenceSection title="Scientific Terms" items={references.terms} icon="🔬" type="terms" />
-        <ReferenceSection title="Research Papers" items={references.paper_links || []} icon="📄" type="urls" />
         <ReferenceSection title="Other Links" items={references.urls} icon="🔗" type="urls" />
       </div>
 
       {/* LLM Prompt */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-6 shadow-sm">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-800">LLM Summary Prompt</h3>
+          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">LLM Summary Prompt</h3>
           <button
             onClick={copyPrompt}
             className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
@@ -253,25 +279,25 @@ export function SummaryView({ analysis }: SummaryViewProps) {
             {copied ? 'Copied!' : 'Copy Prompt'}
           </button>
         </div>
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-gray-600 dark:text-gray-300">
           Copy this prompt and paste it into Claude or another LLM to get a detailed summary.
         </p>
       </div>
 
       {/* Transcript */}
-      <div className="border border-gray-200 rounded-lg overflow-hidden">
+      <div className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
         <button
           onClick={() => setShowTranscript(!showTranscript)}
-          className="w-full px-4 py-3 bg-gray-50 flex items-center justify-between hover:bg-gray-100 transition-colors"
+          className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/60 flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
         >
-          <span className="font-medium text-gray-700">
+          <span className="font-medium text-gray-700 dark:text-gray-200">
             Full Transcript ({transcript.split(' ').length.toLocaleString()} words)
           </span>
-          <span className="text-gray-500">{showTranscript ? '−' : '+'}</span>
+          <span className="text-gray-500 dark:text-gray-400">{showTranscript ? '−' : '+'}</span>
         </button>
         {showTranscript && (
           <div className="px-4 py-3 max-h-96 overflow-y-auto">
-            <p className="text-gray-600 whitespace-pre-wrap text-sm leading-relaxed">
+            <p className="text-gray-600 dark:text-gray-300 whitespace-pre-wrap text-sm leading-relaxed">
               {transcript}
             </p>
           </div>

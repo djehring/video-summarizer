@@ -19,7 +19,7 @@ export function VideoForm({ onSubmit, isLoading, status }: VideoFormProps) {
   return (
     <form onSubmit={handleSubmit} className="w-full max-w-2xl">
       <div className="flex flex-col gap-4">
-        <label htmlFor="url" className="text-lg font-medium text-gray-700">
+        <label htmlFor="url" className="text-lg font-medium text-gray-700 dark:text-gray-200">
           YouTube URL
         </label>
         <div className="flex gap-2">
@@ -29,7 +29,7 @@ export function VideoForm({ onSubmit, isLoading, status }: VideoFormProps) {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://www.youtube.com/watch?v=..."
-            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900"
+            className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-900 placeholder:text-gray-400 dark:placeholder:text-gray-500"
             disabled={isLoading}
             required
           />
@@ -42,7 +42,7 @@ export function VideoForm({ onSubmit, isLoading, status }: VideoFormProps) {
           </button>
         </div>
         {status && (
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-gray-600 dark:text-gray-300">
             Status: <span className="font-medium">{status}</span>
           </p>
         )}

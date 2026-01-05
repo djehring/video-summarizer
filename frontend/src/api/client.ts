@@ -111,11 +111,11 @@ export interface JobResponse {
   result?: VideoAnalysis;
 }
 
-export async function submitVideo(url: string): Promise<JobResponse> {
+export async function submitVideo(url: string, forceRefresh: boolean = false): Promise<JobResponse> {
   const response = await fetch(`${API_BASE}/videos/analyze`, {
     method: 'POST',
     headers: getAuthHeaders(),
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, force_refresh: forceRefresh }),
     credentials: 'include',
   });
   if (!response.ok) {
