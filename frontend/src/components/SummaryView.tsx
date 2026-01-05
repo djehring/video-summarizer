@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { VideoAnalysis } from '../api/client';
+import type { VideoAnalysis, EnrichedReference } from '../api/client';
 
 interface SummaryViewProps {
   analysis: VideoAnalysis;
@@ -84,6 +84,116 @@ function ReferenceSection({ title, items, icon, type }: { title: string; items: 
   );
 }
 
+function ConfidenceIndicator({ confidence }: { confidence: number }) {
+  if (confidence >= 0.8) {
+    return <span className="ml-1 text-green-600 text-xs" title="High confidence match">✓</span>;
+  }
+  if (confidence >= 0.5) {
+    return <span className="ml-1 text-yellow-600 text-xs" title="Possible match">~</span>;
+  }
+  return <span className="ml-1 text-gray-400 text-xs" title="Low confidence">?</span>;
+}
+
+function StudiesSection({
+  studies,
+  enriched
+}: {
+  studies: string[];
+  enriched?: EnrichedReference[];
+}) {
+  const [isOpen, setIsOpen] = useState(true);
+
+  if (studies.length === 0) return null;
+
+  const getHostLabel = (url: string) => {
+    try {
+      const host = new URL(url).hostname.replace(/^www\./, '');
+      return host;
+    } catch {
+      return '';
+    }
+  };
+
+  // Create lookup map for enriched studies
+  const enrichedMap = new Map<string, EnrichedReference>(
+    enriched?.map(e => [e.original_text, e]) || []
+  );
+
+  const enrichedCount = enriched?.filter(e => e.enriched_url)?.length || 0;
+
+  return (
+    <div className="border border-gray-200 rounded-lg overflow-hidden">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-4 py-3 bg-gray-50 flex items-center justify-between hover:bg-gray-100 transition-colors"
+      >
+        <span className="font-medium text-gray-700">
+          📚 Studies & Papers ({studies.length})
+          {enrichedCount > 0 && (
+            <span className="ml-2 text-xs text-green-600">
+              {enrichedCount} with sources
+            </span>
+          )}
+        </span>
+        <span className="text-gray-500">{isOpen ? '−' : '+'}</span>
+      </button>
+      {isOpen && (
+        <ul className="px-4 py-3 space-y-2">
+          {studies.map((study, i) => {
+            const enrichedData = enrichedMap.get(study);
+
+            if (enrichedData?.enriched_url) {
+              // Show enriched result with direct link
+              const journalLabel =
+                enrichedData.enriched_journal ||
+                (enrichedData.enriched_url ? getHostLabel(enrichedData.enriched_url) : '');
+
+              return (
+                <li key={i} className="text-gray-600">
+                  <div className="flex items-start gap-1">
+                    <span>•</span>
+                    <div className="flex-1">
+                      <a
+                        href={enrichedData.enriched_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        {enrichedData.enriched_title || study}
+                      </a>
+                      <ConfidenceIndicator confidence={enrichedData.confidence} />
+                      {journalLabel && (
+                        <span className="block text-xs text-gray-400 mt-0.5">
+                          {journalLabel}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              );
+            }
+
+            // Fallback to Google Scholar search
+            return (
+              <li key={i} className="text-gray-600">
+                •{' '}
+                <a
+                  href={getSearchUrl(study, 'studies')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
+                  {study}
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function SummaryView({ analysis }: SummaryViewProps) {
   const [showTranscript, setShowTranscript] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -123,7 +233,7 @@ export function SummaryView({ analysis }: SummaryViewProps) {
       {/* References */}
       <div className="space-y-3">
         <h3 className="text-lg font-semibold text-gray-800">Extracted References</h3>
-        <ReferenceSection title="Studies & Papers" items={references.studies} icon="📚" type="studies" />
+        <StudiesSection studies={references.studies} enriched={references.studies_enriched} />
         <ReferenceSection title="People Mentioned" items={references.people} icon="👤" type="people" />
         <ReferenceSection title="Books" items={references.books} icon="📖" type="books" />
         <ReferenceSection title="Organizations" items={references.organizations} icon="🏛️" type="organizations" />

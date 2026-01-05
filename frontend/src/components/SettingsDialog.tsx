@@ -209,6 +209,41 @@ export function SettingsDialog({ isOpen, onClose, onHistoryCleared }: SettingsDi
                 </div>
               </div>
 
+              {/* API Status */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 mb-3">API Integrations</h3>
+                <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">OpenAI (Chat & Summaries)</span>
+                    {settings?.api_status?.openai ? (
+                      <span className="flex items-center gap-1 text-sm text-green-600 font-medium">
+                        <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                        Connected
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-sm text-gray-400">
+                        <span className="w-2 h-2 bg-gray-300 rounded-full"></span>
+                        Not configured
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Exa AI (Study Links)</span>
+                    {settings?.api_status?.exa ? (
+                      <span className="flex items-center gap-1 text-sm text-green-600 font-medium">
+                        <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                        Connected
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-sm text-gray-400">
+                        <span className="w-2 h-2 bg-gray-300 rounded-full"></span>
+                        Not configured
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* Actions */}
               <div className="space-y-3">
                 <h3 className="text-sm font-medium text-gray-700">Actions</h3>

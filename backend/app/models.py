@@ -22,8 +22,19 @@ class VideoMetadata(BaseModel):
     url: str
 
 
+class EnrichedReference(BaseModel):
+    """A study reference enriched with actual source URL from Exa search."""
+    original_text: str
+    enriched_url: Optional[str] = None
+    enriched_title: Optional[str] = None
+    enriched_journal: Optional[str] = None
+    confidence: float = 0.0
+    source: str = "exa"
+
+
 class References(BaseModel):
     studies: list[str] = []
+    studies_enriched: list[EnrichedReference] = []  # Studies with actual paper URLs
     people: list[str] = []
     books: list[str] = []
     organizations: list[str] = []

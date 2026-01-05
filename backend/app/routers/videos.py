@@ -6,6 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Depends
 from app.models import VideoRequest, JobResponse, JobStatus, VideoAnalysis, VideoMetadata, References
 from app.services.summarizer import VideoSummarizer
 from app.services.ai_agent import AIAgent
+from app.services.exa_agent import ExaAgent
 from app.database import VideoHistory, is_database_configured
 
 router = APIRouter()
@@ -16,6 +17,7 @@ jobs: dict[str, JobResponse] = {}
 job_users: dict[str, str] = {}
 summarizer = VideoSummarizer()
 ai_agent = AIAgent() if os.getenv("OPENAI_API_KEY") else None
+exa_agent = ExaAgent() if os.getenv("EXA_API_KEY") else None
 
 
 def extract_video_id(url: str) -> str | None:
@@ -154,6 +156,28 @@ def process_video(job_id: str, url: str):
     try:
         jobs[job_id].status = JobStatus.PROCESSING
         result = summarizer.analyze(url)
+
+        # Enrich study references with actual paper URLs via Exa AI
+        if exa_agent and exa_agent.enabled and result.references.studies:
+            try:
+                # If we already have pre-enriched studies (e.g., DOI list from FoundMyFitness),
+                # only enrich the remaining ones.
+                existing = result.references.studies_enriched or []
+                existing_map = {e.original_text: e for e in existing}
+                to_enrich = [s for s in result.references.studies if s not in existing_map]
+
+                if to_enrich:
+                    enriched = exa_agent.enrich_studies_sync(
+                        to_enrich,
+                        max_items=5
+                    )
+                    for e in enriched:
+                        if e.original_text not in existing_map:
+                            existing.append(e)
+                    result.references.studies_enriched = existing
+            except Exception as e:
+                print(f"[Videos] Failed to enrich studies: {e}")
+                # Continue without enrichment if it fails
 
         # Generate synopsis if AI agent is available
         if ai_agent:

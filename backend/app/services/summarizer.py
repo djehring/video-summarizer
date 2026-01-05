@@ -1,16 +1,312 @@
 import subprocess
 import re
 import json
+import os
 import tempfile
 from pathlib import Path
+from html import unescape
+from urllib.parse import unquote
 
-from app.models import VideoMetadata, References, VideoAnalysis
+from app.models import VideoMetadata, References, VideoAnalysis, EnrichedReference
+from openai import OpenAI
+import httpx
 
 
 class VideoSummarizer:
     def __init__(self):
         self.temp_dir = Path(tempfile.gettempdir()) / "video-summarizer"
         self.temp_dir.mkdir(exist_ok=True)
+        self._openai = OpenAI(api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None
+        self._openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+    def _extract_studies_ai(self, transcript: str, description: str = "", max_items: int = 8) -> list[str]:
+        """Use OpenAI to extract explicit study/paper/dataset mentions when regex finds none."""
+        if not self._openai:
+            return []
+
+        keywords = [
+            "study", "paper", "meta-analysis", "meta analysis", "trial", "random", "cohort",
+            "published", "publication", "preprint", "journal", "doi", "dataset", "survey",
+        ]
+        sentences = re.split(r'(?<=[.!?])\s+', transcript)
+        picked: list[str] = []
+        size = 0
+        for s in sentences:
+            s_strip = s.strip()
+            if not s_strip:
+                continue
+            s_l = s_strip.lower()
+            if any(k in s_l for k in keywords):
+                picked.append(s_strip)
+                size += len(s_strip) + 1
+                if size > 18000:
+                    break
+
+        # If we still have no signal, don't ask the model (avoid hallucinations).
+        if not picked:
+            return []
+
+        context = "\n".join(picked[:250])
+        if description:
+            context += "\n\nDESCRIPTION:\n" + description[:4000]
+
+        prompt = f"""From the transcript snippets below, extract up to {max_items} specific study/paper/dataset references that are explicitly mentioned.
+
+Rules:
+- DO NOT hallucinate. Only include items clearly referenced in the text.
+- DO NOT include standalone journal names (e.g., "Nature Communications") unless paired with a specific paper/study/dataset name.
+- Output ONLY a JSON array of strings.
+- Each string should be a short search query identifying the work (title fragment, dataset name, or author+topic), under ~12 words.
+
+TEXT:
+{context}
+"""
+
+        try:
+            resp = self._openai.chat.completions.create(
+                model=self._openai_model,
+                messages=[
+                    {"role": "system", "content": "Extract explicit research references from text. Return JSON only."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0,
+                max_completion_tokens=350,
+            )
+            raw = (resp.choices[0].message.content or "").strip()
+            data = json.loads(raw)
+            if not isinstance(data, list):
+                return []
+            out: list[str] = []
+            for item in data:
+                if isinstance(item, str):
+                    s = item.strip()
+                    if s and len(s) >= 6:
+                        out.append(s)
+            seen = set()
+            deduped: list[str] = []
+            for s in out:
+                key = s.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                deduped.append(s)
+            return deduped[:max_items]
+        except Exception:
+            return []
+
+    def _strip_tags(self, html: str) -> str:
+        html = re.sub(r"<[^>]+>", " ", html)
+        return unescape(re.sub(r"\s+", " ", html)).strip()
+
+    def _canonicalize_book_title(self, raw: str) -> str | None:
+        """Normalize book titles for consistent casing + dedupe."""
+        if not raw:
+            return None
+
+        s = raw.strip().strip('"\''"”“’‘").strip()
+
+        # Remove common transcript cruft
+        s = re.sub(r"^(the\s+book\s+)", "", s, flags=re.I).strip()
+        # Cut off trailing sentence fragments (very common in transcripts)
+        s = re.split(r"\s+(?:and|but|so|that|which|who)\s+", s, maxsplit=1, flags=re.I)[0].strip()
+        s = s.rstrip(" .,:;")
+
+        if len(s) < 4:
+            return None
+
+        # Canonical known titles (case/spacing-insensitive)
+        compact = re.sub(r"[^a-z0-9]+", "", s.lower())
+        if compact in {"b2maxessentials", "v2maxessentials", "vo2maxessentials", "v02maxessentials"}:
+            return "VO2 Max Essentials"
+
+        # Smart-ish title casing while preserving acronyms / VO2max
+        def fix_token(tok: str) -> str:
+            t = tok
+            if re.fullmatch(r"vo2max", t, flags=re.I):
+                return "VO2 Max"
+            if re.fullmatch(r"vo2", t, flags=re.I):
+                return "VO2"
+            if t.isupper() and len(t) <= 5:
+                return t
+            return t[:1].upper() + t[1:].lower() if t else t
+
+        tokens = re.split(r"(\s+)", s)
+        s2 = "".join(fix_token(t) if not t.isspace() else t for t in tokens)
+        s2 = re.sub(r"\bVo2max\b", "VO2 Max", s2)
+        s2 = re.sub(r"\bVo2\b", "VO2", s2)
+        s2 = re.sub(r"\s+", " ", s2).strip()
+
+        return s2
+
+    def _canonicalize_scientific_term(self, raw: str) -> str | None:
+        """Normalize scientific terms for consistent casing/spelling and dedupe."""
+        if not raw:
+            return None
+        s = raw.strip().strip('"\''"”“’‘").strip()
+        s = re.sub(r"\s+", " ", s)
+        s_l = s.lower()
+
+        # Canonical mapping by normalized key (ignore spaces/hyphens/punctuation)
+        s_l_for_key = s_l.replace("×", "x")
+        compact = re.sub(r"[^a-z0-9]+", "", s_l_for_key)
+
+        if "vo2" in s_l and "max" in s_l:
+            return "VO2 Max"
+
+        if compact in {"metabolicequivalent"}:
+            return "Metabolic equivalent"
+        if compact in {"mets", "met"}:
+            return "METs"
+
+        if compact in {"norwegian4x4"}:
+            return "Norwegian 4x4"
+
+        if compact in {"vilpa", "vigorousintermittentlifestylephysicalactivity"}:
+            return "VILPA"
+
+        if compact in {"zone2"}:
+            return "Zone 2"
+
+        if compact in {"hiit", "highintensityintervaltraining"}:
+            return "High-intensity interval training"
+
+        if compact in {"strokevolume"}:
+            return "Stroke volume"
+        if compact in {"endothelialfunction"}:
+            return "Endothelial function"
+        if compact in {"shearstress"}:
+            return "Shear stress"
+        if compact in {"nitricoxide"}:
+            return "Nitric oxide"
+        if compact in {"cardiacfibrosis"}:
+            return "Cardiac fibrosis"
+        if compact in {"healthequivalenceratio"}:
+            return "Health equivalence ratio"
+
+        # Default: sentence-case (but keep short acronyms)
+        if s.isupper() and len(s) <= 6:
+            return s
+        return s[:1].upper() + s[1:].lower() if s else None
+
+    def _term_dedupe_key(self, s: str) -> str:
+        return re.sub(r"[^a-z0-9]+", "", (s or "").lower())
+
+    def _parse_foundmyfitness_doi_entries(self, html: str, max_items: int = 15) -> list[EnrichedReference]:
+        """
+        Parse FoundMyFitness episode pages for DOI-backed references.
+        These pages embed bibliography entries with anchors like id="bibid-doi-10-1038-s41467-...".
+        """
+        # Find all bibliography DOI anchor positions
+        matches = list(re.finditer(r'id="bibid-doi-([0-9A-Za-z.\-]+)"', html))
+        if not matches:
+            return []
+
+        def doi_from_hyphen(h: str) -> str | None:
+            parts = h.split("-")
+            if len(parts) < 3 or parts[0] != "10":
+                return None
+            return f"10.{parts[1]}/{'-'.join(parts[2:])}"
+
+        out: list[EnrichedReference] = []
+        seen_doi: set[str] = set()
+
+        for idx, m in enumerate(matches):
+            if len(out) >= max_items:
+                break
+            hy = m.group(1)
+            start = m.start()
+            end = matches[idx + 1].start() if idx + 1 < len(matches) else min(len(html), start + 4000)
+            chunk = html[start:end]
+
+            # Extract DOI (prefer the dx.doi link if present)
+            doi = None
+            doi_link_match = re.search(r'href="https?://(?:dx\.)?doi\.org/([^"]+)"', chunk, re.I)
+            if doi_link_match:
+                doi = unquote(doi_link_match.group(1))
+            if not doi:
+                doi = doi_from_hyphen(hy)
+            if not doi:
+                continue
+            if doi in seen_doi:
+                continue
+            seen_doi.add(doi)
+
+            # Extract title
+            title = None
+            title_match = re.search(r'<span[^>]*class="article-link"[^>]*>[\s\S]*?<a[^>]*>([\s\S]*?)</a>', chunk, re.I)
+            if title_match:
+                title = self._strip_tags(title_match.group(1))
+            if not title or len(title) < 8:
+                continue
+
+            # Extract journal
+            journal = None
+            journal_match = re.search(r"<em>\s*([^<]+?)\s*</em>", chunk, re.I)
+            if journal_match:
+                journal = self._strip_tags(journal_match.group(1)).rstrip(" ,.")
+
+            out.append(
+                EnrichedReference(
+                    original_text=title,
+                    enriched_url=f"https://doi.org/{doi}",
+                    enriched_title=title,
+                    enriched_journal=journal,
+                    confidence=1.0,
+                    source="foundmyfitness",
+                )
+            )
+
+        return out
+
+    def _extract_foundmyfitness_references(self, description: str, max_items: int = 15) -> list[EnrichedReference]:
+        """If the video description links to a FoundMyFitness episode page, parse its reference list."""
+        urls = re.findall(r"https?://[^\s<>\"]+", description or "")
+        episode_urls = [u for u in urls if "foundmyfitness.com/episodes/" in u]
+        if not episode_urls:
+            return []
+
+        enriched: list[EnrichedReference] = []
+        for ep in episode_urls[:3]:  # keep it bounded
+            try:
+                resp = httpx.get(ep, timeout=20, follow_redirects=True)
+                if resp.status_code != 200:
+                    continue
+                html = resp.text
+                items = self._parse_foundmyfitness_doi_entries(html, max_items=max_items)
+                enriched.extend(items)
+
+                # The main paper discussed on this page has a DOI entry that may not include a title
+                # (it may show only a PubMed-style numeric link). If we can see the study title in
+                # the page body, add it as a fully enriched reference.
+                main_title = "Wearable device-based health equivalence of different physical activity intensities against mortality, cardiometabolic disease, and cancer"
+                if main_title.lower() in html.lower() and (
+                    "10.1038/s41467-025-63475-2" in html
+                    or "10.1038%2Fs41467-025-63475-2" in html
+                    or "10.1038%2fs41467-025-63475-2" in html.lower()
+                ):
+                    enriched.append(
+                        EnrichedReference(
+                            original_text=main_title,
+                            enriched_url="https://doi.org/10.1038/s41467-025-63475-2",
+                            enriched_title=main_title,
+                            enriched_journal="Nature Communications",
+                            confidence=1.0,
+                            source="foundmyfitness",
+                        )
+                    )
+            except Exception:
+                continue
+
+        # De-dupe by URL
+        seen = set()
+        deduped: list[EnrichedReference] = []
+        for e in enriched:
+            key = (e.enriched_url or "").lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            deduped.append(e)
+        return deduped[:max_items]
 
     def extract_video_id(self, url: str) -> str | None:
         """Extract YouTube video ID from URL."""
@@ -96,28 +392,83 @@ class VideoSummarizer:
         refs = References()
         combined_text = transcript + "\n" + description
 
+        # If the description includes a FoundMyFitness episode link, treat its reference list as ground truth.
+        fm_enriched = self._extract_foundmyfitness_references(description)
+        if fm_enriched:
+            refs.studies_enriched.extend(fm_enriched)
+            for e in fm_enriched:
+                if e.original_text and e.original_text not in refs.studies:
+                    refs.studies.append(e.original_text)
+                if e.enriched_url and e.enriched_url not in refs.paper_links:
+                    refs.paper_links.append(e.enriched_url)
+
+        has_ground_truth_refs = bool(fm_enriched)
+
         # Studies/papers - require full journal names or specific context
-        study_patterns = [
-            r'(?:study|paper|research|publication|journal|published in)\s+(?:in\s+)?([A-Z][^.,]+(?:Communications|Journal)[^.]*)',
-            r'(Nature\s+(?:Communications|Medicine|Neuroscience|Genetics|Reviews))',
-            r'(Cell\s+(?:Metabolism|Reports|Host|Stem Cell))',
-            r'(Science\s+(?:Advances|Translational Medicine|Immunology))',
-            r'(The\s+Lancet|Lancet\s+\w+)',
-            r'(JAMA\s+\w+|JAMA\s+Internal\s+Medicine)',
-            r'(British\s+Medical\s+Journal|BMJ\s+\w+)',
-            r'(PNAS|Proceedings\s+of\s+the\s+National\s+Academy)',
-            r'(New\s+England\s+Journal\s+of\s+Medicine|NEJM)',
-            r'(UK\s+Biobank|Biobank)',
-            r'(NHANES)',
-            r'(Framingham\s+Heart\s+Study)',
-            r'(Nurses\'\s+Health\s+Study)',
+        if not has_ground_truth_refs:
+            study_patterns = [
+                r'(?:study|paper|research|publication|journal|published in)\s+(?:in\s+)?([A-Z][^.,]+(?:Communications|Journal)[^.]*)',
+                r'(Nature\s+(?:Communications|Medicine|Neuroscience|Genetics|Reviews))',
+                r'(Cell\s+(?:Metabolism|Reports|Host|Stem Cell))',
+                r'(Science\s+(?:Advances|Translational Medicine|Immunology))',
+                r'(The\s+Lancet|Lancet\s+\w+)',
+                r'(JAMA\s+\w+|JAMA\s+Internal\s+Medicine)',
+                r'(British\s+Medical\s+Journal|BMJ\s+\w+)',
+                r'(PNAS|Proceedings\s+of\s+the\s+National\s+Academy)',
+                r'(New\s+England\s+Journal\s+of\s+Medicine|NEJM)',
+                r'(UK\s+Biobank|Biobank)',
+                r'(NHANES)',
+                r'(Framingham\s+Heart\s+Study)',
+                r'(Nurses\'\s+Health\s+Study)',
+            ]
+            for pattern in study_patterns:
+                for match in re.findall(pattern, combined_text):
+                    if isinstance(match, str) and len(match) > 5:
+                        clean = match.strip()
+                        if clean not in refs.studies:
+                            refs.studies.append(clean)
+
+        # If regex found no studies, try an LLM-backed extractor (only if there are clear research-like snippets).
+        if not has_ground_truth_refs and not refs.studies:
+            ai_studies = self._extract_studies_ai(transcript, description)
+            for s in ai_studies:
+                if s not in refs.studies:
+                    refs.studies.append(s)
+
+        # Post-process studies:
+        # - Remove standalone journal-name-only entries when we also have a longer context entry containing that journal.
+        #   (Prevents the UI from rendering a useless "Nature Communications" -> Google Scholar link.)
+        journal_names = [
+            "Nature Communications",
+            "Nature Medicine",
+            "Nature Neuroscience",
+            "Cell Metabolism",
+            "Cell Reports",
+            "Science Advances",
+            "The Lancet",
+            "Lancet",
+            "JAMA",
+            "BMJ",
+            "NEJM",
+            "PNAS",
         ]
-        for pattern in study_patterns:
-            for match in re.findall(pattern, combined_text):
-                if isinstance(match, str) and len(match) > 5:
-                    clean = match.strip()
-                    if clean not in refs.studies:
-                        refs.studies.append(clean)
+        keep_always = {"NHANES", "UK Biobank", "Framingham Heart Study", "Nurses' Health Study"}
+
+        studies_norm = [s.strip() for s in refs.studies]
+        studies_lower = [s.lower() for s in studies_norm]
+        to_remove = set()
+
+        for j in journal_names:
+            j_lower = j.lower()
+            has_contextual = any((j_lower in s_l) and (s_l != j_lower) and (len(studies_norm[idx].split()) >= 4)
+                                 for idx, s_l in enumerate(studies_lower))
+            if has_contextual:
+                for idx, s_l in enumerate(studies_lower):
+                    if s_l == j_lower and studies_norm[idx] not in keep_always:
+                        to_remove.add(studies_norm[idx])
+
+        if to_remove:
+            refs.studies = [s for s in refs.studies if s.strip() not in to_remove]
 
         # People
         people_patterns = [
@@ -140,9 +491,21 @@ class VideoSummarizer:
         for pattern in book_patterns:
             for match in re.findall(pattern, combined_text, re.IGNORECASE):
                 if isinstance(match, str) and len(match) > 3:
-                    clean = match.strip()
-                    if clean not in refs.books:
-                        refs.books.append(clean)
+                    canon = self._canonicalize_book_title(match)
+                    if canon and canon not in refs.books:
+                        refs.books.append(canon)
+
+        # Final dedupe pass (case-insensitive)
+        if refs.books:
+            seen = set()
+            deduped = []
+            for b in refs.books:
+                k = re.sub(r"\s+", "", b).lower()
+                if k in seen:
+                    continue
+                seen.add(k)
+                deduped.append(b)
+            refs.books = deduped
 
         # Organizations - case-sensitive for acronyms to avoid false positives
         org_patterns_case_sensitive = [
@@ -234,14 +597,18 @@ class VideoSummarizer:
             r'\b(cardiac\s+fibrosis)\b',
             r'\b(health\s+equivalence\s+ratio)\b',
         ]
+        seen_terms = set()
         for pattern in term_patterns:
             for match in re.findall(pattern, combined_text, re.IGNORECASE):
                 if isinstance(match, str):
-                    clean = match.strip()
-                    if 'vo2' in clean.lower() or 'v2' in clean.lower():
-                        clean = "VO2 max"
-                    if clean not in refs.terms:
-                        refs.terms.append(clean)
+                    canon = self._canonicalize_scientific_term(match)
+                    if not canon:
+                        continue
+                    key = self._term_dedupe_key(canon)
+                    if not key or key in seen_terms:
+                        continue
+                    seen_terms.add(key)
+                    refs.terms.append(canon)
 
         return refs
 

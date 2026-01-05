@@ -76,8 +76,18 @@ export interface VideoMetadata {
   url: string;
 }
 
+export interface EnrichedReference {
+  original_text: string;
+  enriched_url: string | null;
+  enriched_title: string | null;
+  enriched_journal?: string | null;
+  confidence: number;
+  source: string;
+}
+
 export interface References {
   studies: string[];
+  studies_enriched?: EnrichedReference[];
   people: string[];
   books: string[];
   organizations: string[];
@@ -208,10 +218,16 @@ export interface HistoryListResponse {
   total: number;
 }
 
+export interface ApiStatus {
+  openai: boolean;
+  exa: boolean;
+}
+
 export interface HistorySettings {
   max_entries: number;
   retention_days: number;
   current_count: number;
+  api_status: ApiStatus;
 }
 
 export type SortOption = 'date' | 'title';
@@ -302,7 +318,7 @@ export async function getHistorySettings(): Promise<HistorySettings> {
   });
   if (!response.ok) {
     if (response.status === 503) {
-      return { max_entries: 50, retention_days: 90, current_count: 0 };
+      return { max_entries: 50, retention_days: 90, current_count: 0, api_status: { openai: false, exa: false } };
     }
     throw new Error('Failed to get history settings');
   }

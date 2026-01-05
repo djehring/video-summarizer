@@ -76,10 +76,15 @@ class HistoryDetailResponse(BaseModel):
     created_at: datetime
 
 
+class ApiStatus(BaseModel):
+    openai: bool
+    exa: bool
+
 class SettingsResponse(BaseModel):
     max_entries: int
     retention_days: int
     current_count: int
+    api_status: ApiStatus
 
 
 def check_db_enabled():
@@ -285,10 +290,15 @@ async def get_settings(
     result = await session.execute(count_query)
     current_count = result.scalar() or 0
 
+    # Check API configurations
+    openai_configured = bool(os.getenv('OPENAI_API_KEY'))
+    exa_configured = bool(os.getenv('EXA_API_KEY'))
+
     return SettingsResponse(
         max_entries=HISTORY_MAX_ENTRIES,
         retention_days=HISTORY_RETENTION_DAYS,
-        current_count=current_count
+        current_count=current_count,
+        api_status=ApiStatus(openai=openai_configured, exa=exa_configured)
     )
 
 
