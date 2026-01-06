@@ -33,10 +33,21 @@ class EnrichedReference(BaseModel):
     source: str = "exa"
 
 
+class EnrichedPerson(BaseModel):
+    """A person mentioned in the video with corrected name and authoritative link."""
+    original_text: str  # The name as it appeared in transcript (possibly mispronounced)
+    corrected_name: str  # The correct spelling
+    title: Optional[str] = None  # e.g. "M.D.", "Ph.D."
+    affiliation: Optional[str] = None  # e.g. "UT Southwestern Medical Center"
+    url: Optional[str] = None  # Authoritative profile URL
+    confidence: float = 1.0
+
+
 class References(BaseModel):
     studies: list[str] = []
     studies_enriched: list[EnrichedReference] = []  # Studies with actual paper URLs
     people: list[str] = []
+    people_enriched: list[EnrichedPerson] = []  # People with corrected names and profile URLs
     books: list[str] = []
     organizations: list[str] = []
     terms: list[str] = []

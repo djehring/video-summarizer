@@ -162,6 +162,18 @@ function App() {
     setViewMode('initial');
   };
 
+  const handleItemDeleted = (deletedJobId: string) => {
+    // If the deleted item was currently being viewed, clear the view
+    if (jobId === deletedJobId) {
+      setJobId(undefined);
+      setAnalysis(undefined);
+      setError(undefined);
+      setStatus(undefined);
+      setLoadedChatMessages(undefined);
+      setViewMode('initial');
+    }
+  };
+
   const handleRefreshSummary = async () => {
     if (!analysis) return;
 
@@ -258,6 +270,7 @@ function App() {
         onViewModeChange={setViewMode}
         hasVideo={!!analysis}
         onCollapsedChange={setSidebarCollapsed}
+        onItemDeleted={handleItemDeleted}
       />
 
       {/* Main content area */}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { VideoAnalysis, EnrichedReference } from '../api/client';
+import type { VideoAnalysis, EnrichedReference, EnrichedPerson } from '../api/client';
 
 interface SummaryViewProps {
   analysis: VideoAnalysis;
@@ -94,6 +94,94 @@ function ConfidenceIndicator({ confidence }: { confidence: number }) {
     return <span className="ml-1 text-yellow-600 text-xs" title="Possible match">~</span>;
   }
   return <span className="ml-1 text-gray-400 dark:text-gray-500 text-xs" title="Low confidence">?</span>;
+}
+
+function PeopleSection({
+  people,
+  enriched
+}: {
+  people: string[];
+  enriched?: EnrichedPerson[];
+}) {
+  const [isOpen, setIsOpen] = useState(true);
+
+  if (people.length === 0) return null;
+
+  // Create lookup map for enriched people (by corrected name)
+  const enrichedMap = new Map<string, EnrichedPerson>(
+    enriched?.map(e => [e.corrected_name, e]) || []
+  );
+
+  const enrichedCount = enriched?.filter(e => e.url)?.length || 0;
+
+  return (
+    <div className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-800/60 flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+      >
+        <span className="font-medium text-gray-700 dark:text-gray-200">
+          👤 People Mentioned ({people.length})
+          {enrichedCount > 0 && (
+            <span className="ml-2 text-xs text-green-600 dark:text-green-400">
+              {enrichedCount} with profiles
+            </span>
+          )}
+        </span>
+        <span className="text-gray-500 dark:text-gray-400">{isOpen ? '−' : '+'}</span>
+      </button>
+      {isOpen && (
+        <ul className="px-4 py-3 space-y-2">
+          {people.map((person, i) => {
+            const enrichedData = enrichedMap.get(person);
+
+            if (enrichedData?.url) {
+              // Show enriched result with direct link
+              return (
+                <li key={i} className="text-gray-600 dark:text-gray-300">
+                  <div className="flex items-start gap-1">
+                    <span>•</span>
+                    <div className="flex-1">
+                      <a
+                        href={enrichedData.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 dark:text-blue-400 hover:underline"
+                      >
+                        {enrichedData.corrected_name}
+                        {enrichedData.title && `, ${enrichedData.title}`}
+                      </a>
+                      <ConfidenceIndicator confidence={enrichedData.confidence} />
+                      {enrichedData.affiliation && (
+                        <span className="block text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                          {enrichedData.affiliation}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              );
+            }
+
+            // Fallback to Google search
+            return (
+              <li key={i} className="text-gray-600 dark:text-gray-300">
+                •{' '}
+                <a
+                  href={getSearchUrl(person, 'people')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  {person}
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 function StudiesSection({
@@ -261,7 +349,7 @@ export function SummaryView({ analysis, onRefresh, isRefreshing }: SummaryViewPr
       <div className="space-y-3">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Extracted References</h3>
         <StudiesSection studies={references.studies} enriched={references.studies_enriched} />
-        <ReferenceSection title="People Mentioned" items={references.people} icon="👤" type="people" />
+        <PeopleSection people={references.people} enriched={references.people_enriched} />
         <ReferenceSection title="Books" items={references.books} icon="📖" type="books" />
         <ReferenceSection title="Organizations" items={references.organizations} icon="🏛️" type="organizations" />
         <ReferenceSection title="Scientific Terms" items={references.terms} icon="🔬" type="terms" />

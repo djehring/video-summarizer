@@ -7,9 +7,114 @@ from pathlib import Path
 from html import unescape
 from urllib.parse import unquote
 
-from app.models import VideoMetadata, References, VideoAnalysis, EnrichedReference
+from app.models import VideoMetadata, References, VideoAnalysis, EnrichedReference, EnrichedPerson
 from openai import OpenAI
 import httpx
+
+
+# Common transcript mispronunciations mapped to correct names
+# Key: lowercase mispronunciation, Value: correct name
+NAME_CORRECTIONS: dict[str, str] = {
+    # Common health/fitness researchers and doctors
+    "ben lavine": "Ben Levine",
+    "benjamin lavine": "Benjamin Levine",
+    "dr. lavine": "Dr. Levine",
+    "dr lavine": "Dr. Levine",
+    "martin gabala": "Martin Gibala",
+    "martin cabala": "Martin Gibala",
+    "martin gibala": "Martin Gibala",  # Already correct but ensure consistency
+    "carrie karnier": "Carrie Karner",  # Common mispronunciation
+    "brady homer": "Brady Holmer",  # Exercise researcher
+    "rhonda patrick": "Rhonda Patrick",  # Already correct
+    "peter atia": "Peter Attia",
+    "peter attia": "Peter Attia",
+    "david sinclair": "David Sinclair",
+    "andrew huberman": "Andrew Huberman",
+    "layne norton": "Layne Norton",
+    "lane norton": "Layne Norton",
+    "andy galpin": "Andy Galpin",
+    "andy golpin": "Andy Galpin",
+    "stanislas emmanuel": "Emmanuel Stamatakis",
+    "emmanuel stamatakis": "Emmanuel Stamatakis",
+    "nick norwitz": "Nick Norwitz",
+}
+
+# Authoritative profiles for known people
+# Key: canonical name (lowercase), Value: profile info
+KNOWN_PEOPLE_PROFILES: dict[str, dict] = {
+    "ben levine": {
+        "corrected_name": "Ben Levine",
+        "title": "M.D.",
+        "affiliation": "UT Southwestern Medical Center",
+        "url": "https://utswmed.org/doctors/benjamin-levine/",
+    },
+    "benjamin levine": {
+        "corrected_name": "Benjamin Levine",
+        "title": "M.D.",
+        "affiliation": "UT Southwestern Medical Center",
+        "url": "https://utswmed.org/doctors/benjamin-levine/",
+    },
+    "martin gibala": {
+        "corrected_name": "Martin Gibala",
+        "title": "Ph.D.",
+        "affiliation": "McMaster University",
+        "url": "https://www.science.mcmaster.ca/kinesiology/component/comprofiler/userprofile/gibMDala.html",
+    },
+    "rhonda patrick": {
+        "corrected_name": "Rhonda Patrick",
+        "title": "Ph.D.",
+        "affiliation": "FoundMyFitness",
+        "url": "https://www.foundmyfitness.com/about-dr-rhonda-patrick",
+    },
+    "peter attia": {
+        "corrected_name": "Peter Attia",
+        "title": "M.D.",
+        "affiliation": "Attia Medical",
+        "url": "https://peterattiamd.com/",
+    },
+    "andrew huberman": {
+        "corrected_name": "Andrew Huberman",
+        "title": "Ph.D.",
+        "affiliation": "Stanford University",
+        "url": "https://hubermanlab.com/",
+    },
+    "david sinclair": {
+        "corrected_name": "David Sinclair",
+        "title": "Ph.D.",
+        "affiliation": "Harvard Medical School",
+        "url": "https://sinclair.hms.harvard.edu/",
+    },
+    "layne norton": {
+        "corrected_name": "Layne Norton",
+        "title": "Ph.D.",
+        "affiliation": "BioLayne",
+        "url": "https://biolayne.com/",
+    },
+    "andy galpin": {
+        "corrected_name": "Andy Galpin",
+        "title": "Ph.D.",
+        "affiliation": "California State University, Fullerton",
+        "url": "https://www.andygalpin.com/",
+    },
+    "brady holmer": {
+        "corrected_name": "Brady Holmer",
+        "title": "Ph.D. Candidate",
+        "affiliation": "University of Florida",
+        "url": "https://www.bradyholmer.com/",
+    },
+    "emmanuel stamatakis": {
+        "corrected_name": "Emmanuel Stamatakis",
+        "title": "Ph.D.",
+        "affiliation": "University of Sydney",
+        "url": "https://www.sydney.edu.au/medicine-health/about/our-people/academic-staff/emmanuel-stamatakis.html",
+    },
+    "nick norwitz": {
+        "corrected_name": "Nick Norwitz",
+        "title": "Ph.D.",
+        "affiliation": "Harvard Medical School",
+        "url": "https://www.youtube.com/@NicholasNorwitzPhD",
+    },
+}
 
 
 class VideoSummarizer:
@@ -190,6 +295,60 @@ TEXT:
 
     def _term_dedupe_key(self, s: str) -> str:
         return re.sub(r"[^a-z0-9]+", "", (s or "").lower())
+
+    def _correct_person_name(self, raw_name: str) -> str:
+        """
+        Correct common transcript mispronunciations of names.
+        Returns the corrected name, or the original if no correction exists.
+        """
+        if not raw_name:
+            return raw_name
+        
+        name_lower = raw_name.strip().lower()
+        
+        # Direct lookup
+        if name_lower in NAME_CORRECTIONS:
+            return NAME_CORRECTIONS[name_lower]
+        
+        # Check each word in the name for partial matches
+        words = name_lower.split()
+        if len(words) >= 2:
+            # Try last name only (handles "Dr. Lavine" -> "Dr. Levine")
+            last_name = words[-1]
+            for misspelling, correction in NAME_CORRECTIONS.items():
+                if misspelling.endswith(last_name):
+                    # Reconstruct with corrected last name
+                    corrected_last = correction.split()[-1]
+                    return " ".join(words[:-1] + [corrected_last]).title()
+        
+        return raw_name
+
+    def _enrich_person(self, name: str, original_name: str) -> EnrichedPerson:
+        """
+        Create an EnrichedPerson with profile info if available.
+        """
+        name_lower = name.lower().strip()
+        
+        # Strip honorifics for lookup
+        lookup_name = re.sub(r"^(dr\.?\s+|professor\s+|prof\.?\s+)", "", name_lower, flags=re.I).strip()
+        
+        if lookup_name in KNOWN_PEOPLE_PROFILES:
+            profile = KNOWN_PEOPLE_PROFILES[lookup_name]
+            return EnrichedPerson(
+                original_text=original_name,
+                corrected_name=profile["corrected_name"],
+                title=profile.get("title"),
+                affiliation=profile.get("affiliation"),
+                url=profile.get("url"),
+                confidence=1.0,
+            )
+        
+        # Return basic enriched person without URL
+        return EnrichedPerson(
+            original_text=original_name,
+            corrected_name=name,
+            confidence=0.5,
+        )
 
     def _parse_foundmyfitness_doi_entries(self, html: str, max_items: int = 15) -> list[EnrichedReference]:
         """
@@ -470,18 +629,30 @@ TEXT:
         if to_remove:
             refs.studies = [s for s in refs.studies if s.strip() not in to_remove]
 
-        # People
+        # People - extract and correct names
         people_patterns = [
             r'(?:Dr\.?\s+|Professor\s+|Prof\.?\s+)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
-            r'([A-Z][a-z]+\s+(?:[A-Z][a-z]+\s+)?(?:Lavine|Patrick|Huberman|Attia|Sinclair|Homer|Gabala|Stamatakis))',
-            r'(Ben\s+Lavine|Martin\s+Gabala|Rhonda\s+Patrick|Brady\s+Homer)',
+            # Mispronunciations we commonly see in transcripts
+            r'([A-Z][a-z]+\s+(?:[A-Z][a-z]+\s+)?(?:Lavine|Levine|Patrick|Huberman|Attia|Sinclair|Homer|Holmer|Gabala|Gibala|Cabala|Stamatakis|Galpin|Norwitz|Norton))',
+            r'(Ben\s+Lavine|Ben\s+Levine|Martin\s+Gabala|Martin\s+Gibala|Martin\s+Cabala|Rhonda\s+Patrick|Brady\s+Homer|Brady\s+Holmer|Andy\s+Galpin|Andy\s+Golpin|Peter\s+Attia|Peter\s+Atia|Nick\s+Norwitz)',
         ]
+        seen_people_keys: set[str] = set()
         for pattern in people_patterns:
             for match in re.findall(pattern, combined_text):
                 if isinstance(match, str) and len(match) > 3:
-                    clean = match.strip()
-                    if clean not in refs.people and not any(p in clean for p in refs.people):
-                        refs.people.append(clean)
+                    original_name = match.strip()
+                    # Correct the name
+                    corrected_name = self._correct_person_name(original_name)
+                    # Dedupe by corrected name (case-insensitive)
+                    key = corrected_name.lower()
+                    if key in seen_people_keys:
+                        continue
+                    seen_people_keys.add(key)
+                    # Add corrected name to the list
+                    refs.people.append(corrected_name)
+                    # Create enriched person entry
+                    enriched = self._enrich_person(corrected_name, original_name)
+                    refs.people_enriched.append(enriched)
 
         # Books
         book_patterns = [

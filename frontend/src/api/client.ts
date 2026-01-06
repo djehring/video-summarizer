@@ -121,10 +121,20 @@ export interface EnrichedReference {
   source: string;
 }
 
+export interface EnrichedPerson {
+  original_text: string;  // The name as it appeared in transcript (possibly mispronounced)
+  corrected_name: string;  // The correct spelling
+  title?: string | null;  // e.g. "M.D.", "Ph.D."
+  affiliation?: string | null;  // e.g. "UT Southwestern Medical Center"
+  url?: string | null;  // Authoritative profile URL
+  confidence: number;
+}
+
 export interface References {
   studies: string[];
   studies_enriched?: EnrichedReference[];
   people: string[];
+  people_enriched?: EnrichedPerson[];
   books: string[];
   organizations: string[];
   terms: string[];
