@@ -8,6 +8,8 @@ from typing import Optional
 from pydantic import BaseModel
 from openai import OpenAI
 from urllib.parse import urlparse
+import json
+import json
 
 
 class EnrichedReference(BaseModel):
@@ -93,6 +95,7 @@ def is_specific_article(url: str, title: str) -> bool:
         "latest research",
         "all articles",
         "article search",
+        "skip to main content",
     ]
     for pattern in generic_title_patterns:
         if pattern in title_lower:
@@ -118,10 +121,51 @@ def is_specific_article(url: str, title: str) -> bool:
 
     return True  # Default to accepting if no red flags
 
+def _strip_markdown_link(text: str) -> str:
+    """
+    Convert Markdown link like "[label](url)" to "label".
+    If it doesn't look like a markdown link, return unchanged.
+    """
+    if not text:
+        return text
+    t = text.strip()
+    if t.startswith("[") and "](" in t and t.endswith(")"):
+        try:
+            label = t[1:t.index("](")]
+            return label.strip() or t
+        except Exception:
+            return t
+    return t
+
+def is_garbage_title(title: str) -> bool:
+    """Detect navigation/boilerplate titles that should never be used as paper titles."""
+    if not title:
+        return True
+    t = _strip_markdown_link(title).strip().lower()
+    if not t:
+        return True
+    garbage_patterns = [
+        "skip to main content",
+        "skip to content",
+        "skip to navigation",
+        "skip to search",
+        "home",
+        "search",
+        "browse",
+    ]
+    if any(p == t for p in garbage_patterns):
+        return True
+    if "skip to main content" in t:
+        return True
+    return False
+
 def clean_title_and_journal(title: str) -> tuple[str, Optional[str]]:
     """Clean up article titles from Exa results and extract journal/source when present."""
     if not title:
         return title, None
+
+    # Exa 'text' sometimes yields markdown links like "[Skip to main content](...)"
+    title = _strip_markdown_link(title)
 
     # Try to capture journal/source suffix before stripping it
     suffix_map: list[tuple[str, str]] = [
@@ -250,6 +294,163 @@ class ExaAgent:
         self.openai_client = OpenAI(api_key=openai_key) if openai_key else None
         self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
+    def _refine_chat_queries(
+        self,
+        user_message: str,
+        video_title: str = "",
+        studies_hint: Optional[list[str]] = None,
+        keywords_hint: Optional[list[str]] = None,
+    ) -> list[str]:
+        """
+        Turn a long user instruction ("summarise X and use exa.ai to find refs")
+        into a small set of focused academic search queries suitable for Exa.
+        """
+        msg = (user_message or "").strip()
+        if not msg:
+            return []
+
+        # Without OpenAI we can't reliably extract multiple focused sub-queries.
+        if not self.openai_client:
+            # Heuristic: strip common instruction phrases and keep first chunk.
+            lowered = msg.lower()
+            for needle in ["use exa.ai", "use exa", "exa.ai", "exa"]:
+                lowered = lowered.replace(needle, "")
+            cleaned = " ".join(lowered.split())
+            return [cleaned[:120] or msg[:120]]
+
+        try:
+            studies_hint = studies_hint or []
+            studies_hint = [s for s in studies_hint if s and len(s.strip()) > 6][:12]
+            keywords_hint = keywords_hint or []
+            keywords_hint = [k for k in keywords_hint if k and len(k.strip()) > 2][:20]
+
+            prompt = {
+                "user_message": msg,
+                "video_title": (video_title or "").strip(),
+                "studies_hint": studies_hint,
+                "keywords_hint": keywords_hint,
+            }
+
+            response = self.openai_client.chat.completions.create(
+                model=self.openai_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You generate academic paper search queries.\n"
+                            "Given a user request about a video, output a JSON array (3-5 items) of short search queries.\n"
+                            "Rules:\n"
+                            "- Each query should target a single claim/topic (max 10-12 words)\n"
+                            "- Remove instruction words like 'summarise', 'headlines', 'use exa'\n"
+                            "- Prefer terms that identify the study/cohort/trial (e.g., 'Framingham omega-3 index mortality')\n"
+                            "- If the user asks for 'lifestyle changes with significant benefit', pick 3-5 likely headline claims.\n"
+                            "- Prefer to incorporate any provided keywords_hint when relevant (e.g. 'sulforaphane', 'COSMOS multivitamin').\n"
+                            "- Output ONLY valid JSON (an array of strings), nothing else."
+                        ),
+                    },
+                    {"role": "user", "content": json.dumps(prompt)},
+                ],
+                temperature=0.2,
+            )
+
+            raw = response.choices[0].message.content.strip()
+            queries = json.loads(raw)
+            if not isinstance(queries, list):
+                return []
+            cleaned_queries: list[str] = []
+            for q in queries:
+                if not isinstance(q, str):
+                    continue
+                q2 = " ".join(q.split()).strip()
+                if len(q2) < 6:
+                    continue
+                cleaned_queries.append(q2[:160])
+            # Dedup while preserving order
+            seen = set()
+            out: list[str] = []
+            for q in cleaned_queries:
+                k = q.lower()
+                if k in seen:
+                    continue
+                seen.add(k)
+                out.append(q)
+            return out[:5]
+        except Exception as e:
+            print(f"[Exa/AI] Chat query refinement failed: {e}")
+            return []
+
+    async def _search_exa(
+        self,
+        query: str,
+        num_results: int = 8,
+        include_domains: Optional[list[str]] = None,
+        exclude_domains: Optional[list[str]] = None,
+    ) -> list[dict]:
+        """Raw Exa search returning result dicts (url/title/text/score)."""
+        if not self.enabled or not query:
+            return []
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                f"{self.base_url}/search",
+                headers={
+                    "x-api-key": self.api_key,
+                    "Content-Type": "application/json",
+                },
+                json=(
+                    {
+                        "query": query,
+                        "numResults": num_results,
+                        "type": "auto",
+                        "contents": {"text": {"maxCharacters": 2000}},
+                        **({"includeDomains": include_domains} if include_domains else {}),
+                        **({"excludeDomains": exclude_domains} if exclude_domains else {}),
+                    }
+                ),
+            )
+            if response.status_code != 200:
+                print(f"[Exa] Search failed {response.status_code}: {response.text[:200]}")
+                return []
+            data = response.json()
+            return data.get("results", []) or []
+
+    def _results_to_papers(self, user_query: str, results: list[dict], max_items: int) -> list[EnrichedReference]:
+        """Convert Exa results into EnrichedReference list using our filtering/cleanups."""
+        candidates: list[EnrichedReference] = []
+        for result in results:
+            url = result.get("url", "")
+            title = result.get("title", "")
+            text_content = result.get("text", "")
+
+            if not url or _is_google_url(url):
+                continue
+            if not is_specific_article(url, title):
+                continue
+
+            candidate_title = title
+            if (("..." in title) or ("…" in title)) and text_content:
+                first_line = text_content.split('\n')[0].strip()
+                if first_line and len(first_line) < 240 and not is_garbage_title(first_line):
+                    candidate_title = first_line
+
+            cleaned, journal = clean_title_and_journal(candidate_title)
+            if is_garbage_title(cleaned):
+                continue
+
+            candidates.append(
+                EnrichedReference(
+                    original_text=user_query,
+                    enriched_url=url,
+                    enriched_title=cleaned,
+                    enriched_journal=journal or infer_source_from_url(url),
+                    confidence=min(result.get("score", 0.5), 1.0),
+                    source="exa",
+                )
+            )
+            if len(candidates) >= max_items:
+                break
+
+        return candidates
+
     def _refine_study_query(self, raw_text: str) -> Optional[str]:
         """Use OpenAI to clean up a messy study reference into a proper search query."""
         if not self.openai_client:
@@ -367,7 +568,9 @@ Rules:
                             if text_content:
                                 first_line = text_content.split('\n')[0].strip()
                                 if first_line and len(first_line) < 240:
-                                    candidate_title = first_line
+                                    # Only use text-derived titles if they don't look like navigation/boilerplate.
+                                    if not is_garbage_title(first_line):
+                                        candidate_title = first_line
 
                         # Clean up the title + extract journal/source
                         cleaned, journal = clean_title_and_journal(candidate_title)
@@ -377,7 +580,11 @@ Rules:
                             # Try to get better title from text content (first line often has title)
                             if text_content:
                                 first_line = text_content.split('\n')[0].strip()
-                                if len(first_line) > len(cleaned) and len(first_line) < 200:
+                                if (
+                                    len(first_line) > len(cleaned)
+                                    and len(first_line) < 200
+                                    and not is_garbage_title(first_line)
+                                ):
                                     cleaned, journal2 = clean_title_and_journal(first_line)
                                     journal = journal or journal2
                                     print(f"[Exa] Used text for title: '{cleaned}'")
@@ -449,6 +656,200 @@ Rules:
 
         print(f"[Exa] Enriched {len(enriched)}/{min(len(studies), max_items)} studies")
         return enriched
+
+    async def search_papers(self, query: str, max_items: int = 3) -> list[EnrichedReference]:
+        """
+        Search Exa for likely academic papers for an arbitrary query.
+        Intended for chat-time citation lookup ("which paper is that?").
+        """
+        if not self.enabled or not query:
+            return []
+
+        q = query.strip()
+        if len(q) > 240:
+            q = q[:240]
+
+        # Bias toward academic intent without mangling user query too much
+        search_query = q if any(tok in q.lower() for tok in ["pmid", "doi", "randomized", "randomised", "trial", "cohort"]) else f"{q} study"
+        print(f"[Exa] Chat-searching: '{search_query}'")
+
+        try:
+            results = await self._search_exa(search_query, num_results=10)
+            # If Exa returns nothing at all, continue to PubMed fallback (and other fallbacks below)
+            # instead of bailing out early.
+
+            candidates = self._results_to_papers(query, results or [], max_items=max_items)
+
+            # If nothing, try Exa's native domain filtering (more reliable than "site:" operators).
+            # See: https://docs.exa.ai/changelog/domain-path-filter
+            if not candidates:
+                focused_results = await self._search_exa(
+                    q,
+                    num_results=12,
+                    include_domains=[
+                        "https://pubmed.ncbi.nlm.nih.gov",
+                        "https://pmc.ncbi.nlm.nih.gov",
+                        "https://ncbi.nlm.nih.gov",
+                        "https://www.sciencedirect.com",
+                    ],
+                )
+                candidates.extend(self._results_to_papers(query, focused_results, max_items=max_items))
+
+            # Last resort: relax domain restriction but keep non-Google + specific-article checks.
+            if not candidates:
+                relaxed: list[EnrichedReference] = []
+                for r in results:
+                    url = r.get("url", "")
+                    title = r.get("title", "")
+                    if not url or _is_google_url(url) or not is_specific_article(url, title):
+                        continue
+                    cleaned, journal = clean_title_and_journal(title)
+                    if is_garbage_title(cleaned):
+                        continue
+                    relaxed.append(
+                        EnrichedReference(
+                            original_text=query,
+                            enriched_url=url,
+                            enriched_title=cleaned,
+                            enriched_journal=journal or infer_source_from_url(url),
+                            confidence=min(r.get("score", 0.2), 1.0),
+                            source="exa",
+                        )
+                    )
+                    if len(relaxed) >= max_items:
+                        break
+                candidates = relaxed
+
+            # PubMed fallback: for biomedical claims Exa can return 0 even when PubMed can resolve it.
+            if not candidates:
+                pubmed = await self._search_pubmed(q, max_items=max_items)
+                if pubmed:
+                    candidates = pubmed
+
+            print(f"[Exa] Chat-search enriched {len(candidates)} source(s)")
+            return candidates[:max_items]
+
+        except httpx.TimeoutException:
+            print(f"[Exa] Chat-search timeout: {query[:80]}")
+            return []
+        except Exception as e:
+            print(f"[Exa] Chat-search error: {e}")
+            return []
+
+    async def _search_pubmed(self, query: str, max_items: int = 3) -> list[EnrichedReference]:
+        """
+        PubMed E-utilities fallback for biomedical queries.
+        Returns PubMed landing-page URLs with titles/journals when found.
+        """
+        q = (query or "").strip()
+        if not q:
+            return []
+        if len(q) > 240:
+            q = q[:240]
+
+        try:
+            # NCBI recommends identifying your tool; also helps with rate-limiting behaviour.
+            params_base = {"tool": "video-summarizer", "email": "local@video-summarizer"}
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                esearch = await client.get(
+                    "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi",
+                    params={
+                        "db": "pubmed",
+                        "retmode": "json",
+                        "retmax": str(max_items),
+                        "term": q,
+                        **params_base,
+                    },
+                )
+                if esearch.status_code != 200:
+                    return []
+                data = esearch.json()
+                idlist = (((data or {}).get("esearchresult") or {}).get("idlist") or [])
+                pmids = [pid for pid in idlist if isinstance(pid, str) and pid.isdigit()]
+                if not pmids:
+                    return []
+
+                # Small delay to reduce 429s on bursty traffic
+                import asyncio
+                await asyncio.sleep(0.35)
+
+                async def fetch_summary():
+                    return await client.get(
+                        "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi",
+                        params={
+                            "db": "pubmed",
+                            "retmode": "json",
+                            "id": ",".join(pmids),
+                            **params_base,
+                        },
+                    )
+
+                esummary = await fetch_summary()
+                if esummary.status_code == 429:
+                    await asyncio.sleep(0.8)
+                    esummary = await fetch_summary()
+                if esummary.status_code != 200:
+                    return []
+                sdata = esummary.json()
+                result = (sdata or {}).get("result") or {}
+
+                out: list[EnrichedReference] = []
+                for pmid in pmids:
+                    item = result.get(pmid) or {}
+                    title = (item.get("title") or "").strip().rstrip(".")
+                    source = (item.get("source") or "").strip()
+                    if is_garbage_title(title):
+                        continue
+                    out.append(
+                        EnrichedReference(
+                            original_text=query,
+                            enriched_url=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
+                            enriched_title=title or None,
+                            enriched_journal=source or "PubMed",
+                            confidence=0.55,
+                            source="pubmed",
+                        )
+                    )
+                return out[:max_items]
+        except Exception as e:
+            print(f"[PubMed] Fallback search error: {e}")
+            return []
+
+    def search_papers_sync(self, query: str, max_items: int = 3) -> list[EnrichedReference]:
+        """Sync wrapper for search_papers (safe to call from FastAPI endpoints)."""
+        import asyncio
+
+        if not self.enabled or not query:
+            return []
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(asyncio.run, self.search_papers(query, max_items=max_items))
+                    return future.result(timeout=30)
+            return loop.run_until_complete(self.search_papers(query, max_items=max_items))
+        except RuntimeError:
+            return asyncio.run(self.search_papers(query, max_items=max_items))
+        except Exception as e:
+            print(f"[Exa] Chat-search sync failed: {e}")
+            return []
+
+    def refine_chat_queries_sync(
+        self,
+        user_message: str,
+        video_title: str = "",
+        studies_hint: Optional[list[str]] = None,
+        keywords_hint: Optional[list[str]] = None,
+    ) -> list[str]:
+        """Sync wrapper around _refine_chat_queries (kept sync to avoid event loop issues)."""
+        return self._refine_chat_queries(
+            user_message=user_message,
+            video_title=video_title,
+            studies_hint=studies_hint,
+            keywords_hint=keywords_hint,
+        )
 
     def enrich_studies_sync(
         self,

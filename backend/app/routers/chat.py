@@ -7,9 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import ChatRequest, ChatResponse, SummarizeRequest, SummarizeResponse, VideoAnalysis, VideoMetadata, References
 from app.routers.videos import jobs
 from app.services.ai_agent import AIAgent
+from app.services.exa_agent import ExaAgent
 from app.database import get_session, is_database_configured, ChatMessageDB, VideoHistory
 
 router = APIRouter()
+exa_agent = ExaAgent() if os.getenv("EXA_API_KEY") else None
 
 
 async def require_auth(request: Request) -> dict:
@@ -136,7 +138,141 @@ async def chat_message(request: ChatRequest, req: Request, user: dict = Depends(
 
     agent = get_agent()
     history = [{"role": m.role, "content": m.content} for m in request.history]
-    response = agent.chat(analysis, history, request.message)
+
+    # Optional: retrieve citations at chat-time via Exa when the user is asking for a paper/study/source.
+    extra_context_parts: list[str] = []
+    msg_l = (request.message or "").lower()
+    # If the user explicitly asks to "use exa", treat that as a hard trigger for retrieval.
+    explicit_exa = ("exa.ai" in msg_l) or ("use exa" in msg_l) or ("use exa.ai" in msg_l) or ("exa " in msg_l) or (msg_l.strip() == "exa")
+
+    wants_citation = explicit_exa or any(
+        k in msg_l for k in [
+            "which study",
+            "which paper",
+            "what study",
+            "what paper",
+            "citation",
+            "source",
+            "reference",
+            "pmid",
+            "doi",
+            "framingham",
+            "trial",
+            "cohort",
+            "find the link",
+            "find me the link",
+            "find the research",
+            "link to the research",
+            "links to the research",
+            "link to the study",
+            "links to the stud",
+            "pubmed",
+            "paper",
+            "human stud",
+        ]
+    )
+
+    if exa_agent and exa_agent.enabled and wants_citation:
+
+        # Use a clean base query (avoid sending the entire instruction sentence to Exa).
+        base_query = (request.message or "").strip()
+        if explicit_exa:
+            import re
+            base_query = re.sub(r'\buse\s+exa(\.ai)?\b', '', base_query, flags=re.IGNORECASE)
+            base_query = re.sub(r'\bexa(\.ai)?\b', '', base_query, flags=re.IGNORECASE)
+            base_query = " ".join(base_query.split()).strip()
+
+        try:
+            video_title = analysis.video.title if analysis.video else ""
+            studies_hint = []
+            try:
+                studies_hint = list(getattr(analysis.references, "studies", []) or [])
+            except Exception:
+                studies_hint = []
+
+            # Pull a few relevant keyword hints from the transcript to improve retrieval
+            keywords_hint: list[str] = []
+            try:
+                t = (analysis.transcript or "").lower()
+                for kw in [
+                    "sulforaphane",
+                    "broccoli sprouts",
+                    "broccoli",
+                    "sprouts",
+                    "multivitamin",
+                    "centrum",
+                    "cosmos",
+                    "cardiorespiratory",
+                    "vo2",
+                    "vo₂",
+                    "vilpa",
+                    "fitness",
+                    "vitamin d",
+                    "dementia",
+                    "omega-3 index",
+                    "omega 3 index",
+                    "framingham",
+                    "benzene",
+                ]:
+                    if kw in t:
+                        keywords_hint.append(kw)
+                keywords_hint = keywords_hint[:12]
+            except Exception:
+                keywords_hint = []
+
+            papers = exa_agent.search_papers_sync(base_query or video_title, max_items=3)
+
+            # If Exa returns nothing, refine into a few focused academic queries and retry.
+            attempted_queries: list[str] = [base_query or video_title]
+            if not papers:
+                # Targeted fallbacks for common "headline claims" in these videos.
+                # These are intentionally PubMed-friendly (works with our PubMed fallback too).
+                if ("sulforaphane" in keywords_hint) or ("broccoli sprouts" in keywords_hint) or ("benzene" in keywords_hint):
+                    targeted = [
+                        "broccoli sprout beverage benzene acrolein mercapturic acid randomized trial",
+                        "glucoraphanin-rich sulforaphane-rich broccoli sprout beverages Qidong airborne pollutants",
+                        "broccoli sprout beverage S-phenylmercapturic acid 3-hydroxypropylmercapturic acid",
+                    ]
+                    for tq in targeted:
+                        attempted_queries.append(tq)
+                        papers.extend(exa_agent.search_papers_sync(tq, max_items=2))
+
+                refined = exa_agent.refine_chat_queries_sync(
+                    user_message=request.message,
+                    video_title=video_title,
+                    studies_hint=studies_hint,
+                    keywords_hint=keywords_hint,
+                )
+                for q in refined:
+                    attempted_queries.append(q)
+                    papers.extend(exa_agent.search_papers_sync(q, max_items=2))
+
+            # De-dup URLs while preserving order
+            deduped = []
+            seen_urls = set()
+            for p in papers:
+                u = (p.enriched_url or "").strip().lower()
+                if not u or u in seen_urls:
+                    continue
+                seen_urls.add(u)
+                deduped.append(p)
+            papers = deduped[:5]
+
+            if papers:
+                lines = []
+                for p in papers:
+                    title = p.enriched_title or p.original_text
+                    journal = f" ({p.enriched_journal})" if p.enriched_journal else ""
+                    if p.enriched_url:
+                        lines.append(f"- {title}{journal}: {p.enriched_url}")
+                if lines:
+                    extra_context_parts.append("On-demand paper lookup:\n" + "\n".join(lines))
+        except Exception as e:
+            # Never fail chat if Exa lookup fails
+            print(f"[Chat] Exa lookup failed: {e}")
+
+    extra_context = "\n\n".join(extra_context_parts) if extra_context_parts else None
+    response = agent.chat(analysis, history, request.message, extra_context=extra_context)
 
     # Save chat messages to database if configured
     if is_database_configured():

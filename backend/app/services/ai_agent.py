@@ -8,7 +8,7 @@ class AIAgent:
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.model = os.getenv("OPENAI_MODEL", "gpt-4o")
 
-    def _build_system_prompt(self, analysis: VideoAnalysis) -> str:
+    def _build_system_prompt(self, analysis: VideoAnalysis, extra_context: str | None = None) -> str:
         """Build system prompt with video context."""
         refs_text = ""
         refs = analysis.references
@@ -16,6 +16,19 @@ class AIAgent:
             refs_text = "\n\nEXTRACTED REFERENCES:\n"
             if refs.studies:
                 refs_text += "Studies: " + ", ".join(refs.studies) + "\n"
+            # Prefer enriched study links when available
+            if getattr(refs, "studies_enriched", None):
+                try:
+                    enriched_lines = []
+                    for e in refs.studies_enriched[:10]:
+                        title = e.enriched_title or e.original_text
+                        if e.enriched_url:
+                            enriched_lines.append(f"- {title}: {e.enriched_url}")
+                    if enriched_lines:
+                        refs_text += "Enriched study links:\n" + "\n".join(enriched_lines) + "\n"
+                except Exception:
+                    # Never fail prompt building due to enrichment formatting
+                    pass
             if refs.people:
                 refs_text += "People: " + ", ".join(refs.people) + "\n"
             if refs.books:
@@ -30,6 +43,10 @@ class AIAgent:
         if len(analysis.transcript) > 30000:
             transcript_preview += "\n\n[Transcript truncated...]"
 
+        extra = ""
+        if extra_context:
+            extra = f"\n\nADDITIONAL SOURCES (use for citations when relevant):\n{extra_context}\n"
+
         return f"""You are an AI assistant helping analyse and discuss a YouTube video. Always use UK English spelling and conventions (e.g., analyse, summarise, colour, behaviour, organisation).
 
 VIDEO INFORMATION:
@@ -38,6 +55,7 @@ VIDEO INFORMATION:
 - Duration: {analysis.video.duration // 60} minutes
 - URL: {analysis.video.url}
 {refs_text}
+{extra}
 
 TRANSCRIPT:
 {transcript_preview}
@@ -49,8 +67,29 @@ Help the user understand, summarize, and discuss this video content. You can:
 - Highlight key takeaways and actionable advice
 - Clarify who people mentioned are and their credentials
 - Discuss the studies and research referenced
+- Find and link to relevant research papers
 
-Be concise but thorough. Use the transcript to provide accurate information."""
+Be concise but thorough. Use the transcript to provide accurate information.
+
+FINDING LINKS AND CITATIONS:
+- If source links are provided in ADDITIONAL SOURCES above, use those markdown links.
+- When the user asks for links/citations:
+  1. SEARCH THE TRANSCRIPT ABOVE for the specific claims (dosages, durations, outcomes, study details)
+  2. Use those details plus your knowledge to identify the actual papers
+  3. Provide PubMed links (https://pubmed.ncbi.nlm.nih.gov/PMID/) or DOI links
+
+CRITICAL - NEVER DO THESE:
+- NEVER ask the user for timestamps - YOU have the transcript, search it yourself
+- NEVER ask the user for screenshots or images - this app doesn't support image uploads
+- NEVER ask the user to "upload" anything - they can only type text messages
+- NEVER ask "where in the video" - the user passed you a link, they're not watching it
+- NEVER say "tell me roughly where it appears" - that's YOUR job to find in the transcript
+- NEVER mention internal tools/APIs like "Exa"
+- NEVER make excuses - just find the papers using the transcript and your knowledge
+
+The user's workflow: they paste a video URL → you analyse it → they ask questions. They are NOT watching the video. YOU have all the information. DO THE WORK.
+
+Example: If user asks about "85g watercress DNA damage study", search the transcript for that mention, find the context (duration, outcome, journal mentioned), then identify and link the paper."""
 
     def generate_synopsis(self, analysis: VideoAnalysis) -> str:
         """Generate a brief one-paragraph synopsis of the video."""
@@ -148,13 +187,14 @@ Format everything in clean Markdown with tables using | syntax. Be thorough but 
         self,
         analysis: VideoAnalysis,
         messages: list[dict],
-        user_message: str
+        user_message: str,
+        extra_context: str | None = None
     ) -> str:
         """Chat about the video with conversation history."""
         chat_messages = [
             {
                 "role": "system",
-                "content": self._build_system_prompt(analysis)
+                "content": self._build_system_prompt(analysis, extra_context=extra_context)
             }
         ]
 

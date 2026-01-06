@@ -113,19 +113,38 @@ async def list_history(
         .subquery()
     )
 
+    # De-dupe history by video_id: keep only the newest run per video.
+    # Refresh creates a new job_id, but users generally want a single entry per video in the sidebar.
+    dedup = (
+        select(
+            VideoHistory.job_id.label("job_id"),
+            VideoHistory.video_id.label("video_id"),
+            VideoHistory.title.label("title"),
+            VideoHistory.channel.label("channel"),
+            VideoHistory.duration.label("duration"),
+            VideoHistory.url.label("url"),
+            VideoHistory.created_at.label("created_at"),
+            func.row_number().over(
+                partition_by=VideoHistory.video_id,
+                order_by=VideoHistory.created_at.desc()
+            ).label("rn"),
+        )
+        .where(VideoHistory.user_email == user_email)
+    ).subquery()
+
     query = (
         select(
-            VideoHistory.job_id,
-            VideoHistory.video_id,
-            VideoHistory.title,
-            VideoHistory.channel,
-            VideoHistory.duration,
-            VideoHistory.url,
-            VideoHistory.created_at,
+            dedup.c.job_id,
+            dedup.c.video_id,
+            dedup.c.title,
+            dedup.c.channel,
+            dedup.c.duration,
+            dedup.c.url,
+            dedup.c.created_at,
             func.coalesce(subquery.c.message_count, 0).label('message_count')
         )
-        .outerjoin(subquery, VideoHistory.job_id == subquery.c.job_id)
-        .where(VideoHistory.user_email == user_email)
+        .outerjoin(subquery, dedup.c.job_id == subquery.c.job_id)
+        .where(dedup.c.rn == 1)
     )
 
     # Apply search filter
@@ -133,16 +152,16 @@ async def list_history(
         search_term = f"%{search}%"
         query = query.where(
             or_(
-                VideoHistory.title.ilike(search_term),
-                VideoHistory.channel.ilike(search_term)
+                dedup.c.title.ilike(search_term),
+                dedup.c.channel.ilike(search_term)
             )
         )
 
     # Apply sort
     if sort == 'title':
-        query = query.order_by(asc(VideoHistory.title))
+        query = query.order_by(asc(dedup.c.title))
     else:
-        query = query.order_by(desc(VideoHistory.created_at))
+        query = query.order_by(desc(dedup.c.created_at))
 
     result = await session.execute(query)
     rows = result.all()

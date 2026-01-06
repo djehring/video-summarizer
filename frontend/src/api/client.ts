@@ -27,6 +27,42 @@ function getAuthHeaders(): HeadersInit {
   return headers;
 }
 
+async function getErrorMessage(response: Response): Promise<string> {
+  const contentType = response.headers.get('content-type') || '';
+
+  // Best effort: our backend errors are usually { detail: string }
+  if (contentType.includes('application/json')) {
+    try {
+      const data = await response.json() as { detail?: string; message?: string; error?: string };
+      return data.detail || data.message || data.error || `Request failed (${response.status})`;
+    } catch {
+      // Fall through to text parsing below
+    }
+  }
+
+  try {
+    const text = await response.text();
+    const snippet = text.trim().slice(0, 300);
+    return snippet ? `Request failed (${response.status}): ${snippet}` : `Request failed (${response.status})`;
+  } catch {
+    return `Request failed (${response.status})`;
+  }
+}
+
+async function parseJsonOrThrow<T>(response: Response): Promise<T> {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return response.json() as Promise<T>;
+  }
+
+  const text = await response.text();
+  const snippet = text.trim().slice(0, 300);
+  throw new Error(
+    `Expected JSON but got ${contentType || 'unknown content-type'} (${response.status}).` +
+    (snippet ? ` Body: ${snippet}` : '')
+  );
+}
+
 // Auth types and functions
 export interface User {
   email: string;
@@ -42,9 +78,9 @@ export async function exchangeAuthToken(token: string): Promise<{ token: string;
     credentials: 'include',
   });
   if (!response.ok) {
-    throw new Error('Failed to exchange token');
+    throw new Error(await getErrorMessage(response));
   }
-  return response.json();
+  return parseJsonOrThrow(response);
 }
 
 export async function getCurrentUser(): Promise<User | null> {
@@ -119,9 +155,9 @@ export async function submitVideo(url: string, forceRefresh: boolean = false): P
     credentials: 'include',
   });
   if (!response.ok) {
-    throw new Error('Failed to submit video');
+    throw new Error(await getErrorMessage(response));
   }
-  return response.json();
+  return parseJsonOrThrow(response);
 }
 
 export async function getJobStatus(jobId: string): Promise<JobResponse> {
@@ -130,9 +166,9 @@ export async function getJobStatus(jobId: string): Promise<JobResponse> {
     headers: getAuthHeaders(),
   });
   if (!response.ok) {
-    throw new Error('Failed to get job status');
+    throw new Error(await getErrorMessage(response));
   }
-  return response.json();
+  return parseJsonOrThrow(response);
 }
 
 export async function pollUntilComplete(
@@ -175,10 +211,9 @@ export async function generateSummary(jobId: string): Promise<string> {
     credentials: 'include',
   });
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Failed to generate summary');
+    throw new Error(await getErrorMessage(response));
   }
-  const data = await response.json();
+  const data = await parseJsonOrThrow<{ summary: string }>(response);
   return data.summary;
 }
 
@@ -194,10 +229,9 @@ export async function sendChatMessage(
     credentials: 'include',
   });
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Failed to send message');
+    throw new Error(await getErrorMessage(response));
   }
-  const data = await response.json();
+  const data = await parseJsonOrThrow<{ response: string }>(response);
   return data.response;
 }
 
@@ -272,9 +306,9 @@ export async function getHistory(
       // History feature not available
       return { items: [], total: 0 };
     }
-    throw new Error('Failed to get history');
+    throw new Error(await getErrorMessage(response));
   }
-  return response.json();
+  return parseJsonOrThrow(response);
 }
 
 export async function getHistoryItem(jobId: string): Promise<HistoryDetail> {
@@ -283,9 +317,9 @@ export async function getHistoryItem(jobId: string): Promise<HistoryDetail> {
     headers: getAuthHeaders(),
   });
   if (!response.ok) {
-    throw new Error('Failed to get history item');
+    throw new Error(await getErrorMessage(response));
   }
-  return response.json();
+  return parseJsonOrThrow(response);
 }
 
 export async function deleteHistoryItem(jobId: string): Promise<void> {
@@ -295,7 +329,7 @@ export async function deleteHistoryItem(jobId: string): Promise<void> {
     headers: getAuthHeaders(),
   });
   if (!response.ok) {
-    throw new Error('Failed to delete history item');
+    throw new Error(await getErrorMessage(response));
   }
 }
 
@@ -306,9 +340,9 @@ export async function clearAllHistory(): Promise<{ deleted_count: number }> {
     headers: getAuthHeaders(),
   });
   if (!response.ok) {
-    throw new Error('Failed to clear history');
+    throw new Error(await getErrorMessage(response));
   }
-  return response.json();
+  return parseJsonOrThrow(response);
 }
 
 export async function getHistorySettings(): Promise<HistorySettings> {
@@ -320,9 +354,9 @@ export async function getHistorySettings(): Promise<HistorySettings> {
     if (response.status === 503) {
       return { max_entries: 50, retention_days: 90, current_count: 0, api_status: { openai: false, exa: false } };
     }
-    throw new Error('Failed to get history settings');
+    throw new Error(await getErrorMessage(response));
   }
-  return response.json();
+  return parseJsonOrThrow(response);
 }
 
 export function getExportHistoryUrl(): string {
