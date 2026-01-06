@@ -272,7 +272,13 @@ async def chat_message(request: ChatRequest, req: Request, user: dict = Depends(
             print(f"[Chat] Exa lookup failed: {e}")
 
     extra_context = "\n\n".join(extra_context_parts) if extra_context_parts else None
-    response = agent.chat(analysis, history, request.message, extra_context=extra_context)
+    response = agent.chat(
+        analysis, 
+        history, 
+        request.message, 
+        extra_context=extra_context,
+        image_base64=request.image_base64
+    )
 
     # Save chat messages to database if configured
     if is_database_configured():

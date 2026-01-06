@@ -62,12 +62,14 @@ class JobResponse(BaseModel):
 class ChatMessage(BaseModel):
     role: str  # "user" or "assistant"
     content: str
+    image_base64: Optional[str] = None  # For messages with attached images
 
 
 class ChatRequest(BaseModel):
     job_id: str
     message: str
     history: list[ChatMessage] = []
+    image_base64: Optional[str] = None  # Base64-encoded image data (JPEG/PNG)
 
 
 class ChatResponse(BaseModel):

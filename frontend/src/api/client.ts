@@ -201,6 +201,7 @@ export async function pollUntilComplete(
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  image_base64?: string;  // For messages with attached images
 }
 
 export async function generateSummary(jobId: string): Promise<string> {
@@ -220,12 +221,18 @@ export async function generateSummary(jobId: string): Promise<string> {
 export async function sendChatMessage(
   jobId: string,
   message: string,
-  history: ChatMessage[]
+  history: ChatMessage[],
+  imageBase64?: string
 ): Promise<string> {
+  const body: Record<string, unknown> = { job_id: jobId, message, history };
+  if (imageBase64) {
+    body.image_base64 = imageBase64;
+  }
+  
   const response = await fetch(`${API_BASE}/chat/message`, {
     method: 'POST',
     headers: getAuthHeaders(),
-    body: JSON.stringify({ job_id: jobId, message, history }),
+    body: JSON.stringify(body),
     credentials: 'include',
   });
   if (!response.ok) {

@@ -183,14 +183,43 @@ Format everything in clean Markdown with tables using | syntax. Be thorough but 
         )
         return response.choices[0].message.content
 
+    def _build_user_content(self, text: str, image_base64: str | None = None) -> str | list[dict]:
+        """Build user message content, optionally including an image for vision."""
+        if not image_base64:
+            return text
+        
+        # Multi-modal content for GPT-4o vision
+        content = [
+            {"type": "text", "text": text}
+        ]
+        
+        # Detect image type from base64 header or default to jpeg
+        if image_base64.startswith("/9j/"):
+            media_type = "image/jpeg"
+        elif image_base64.startswith("iVBOR"):
+            media_type = "image/png"
+        else:
+            media_type = "image/jpeg"  # Default
+        
+        content.append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:{media_type};base64,{image_base64}",
+                "detail": "high"  # Use high detail for reading text/citations
+            }
+        })
+        
+        return content
+
     def chat(
         self,
         analysis: VideoAnalysis,
         messages: list[dict],
         user_message: str,
-        extra_context: str | None = None
+        extra_context: str | None = None,
+        image_base64: str | None = None
     ) -> str:
-        """Chat about the video with conversation history."""
+        """Chat about the video with conversation history. Supports image attachments."""
         chat_messages = [
             {
                 "role": "system",
@@ -200,21 +229,24 @@ Format everything in clean Markdown with tables using | syntax. Be thorough but 
 
         # Add conversation history
         for msg in messages:
+            # Handle historical messages that might have images
+            msg_image = msg.get("image_base64")
             chat_messages.append({
                 "role": msg["role"],
-                "content": msg["content"]
+                "content": self._build_user_content(msg["content"], msg_image) if msg["role"] == "user" else msg["content"]
             })
 
-        # Add new user message
+        # Add new user message (with optional image)
+        user_content = self._build_user_content(user_message, image_base64)
         chat_messages.append({
             "role": "user",
-            "content": user_message
+            "content": user_content
         })
 
         response = self.client.chat.completions.create(
             model=self.model,
             messages=chat_messages,
             temperature=0.7,
-            max_completion_tokens=1500
+            max_completion_tokens=2000  # Increased for image analysis responses
         )
         return response.choices[0].message.content

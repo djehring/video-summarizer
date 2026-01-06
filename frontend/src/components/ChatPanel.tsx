@@ -1,7 +1,28 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { generateSummary, sendChatMessage, type ChatMessage } from '../api/client';
+
+// Helper to convert File to base64
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // Remove the data URL prefix (e.g., "data:image/jpeg;base64,")
+      const base64 = result.split(',')[1];
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// Validate image file
+function isValidImageFile(file: File): boolean {
+  const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+  return validTypes.includes(file.type) && file.size <= 20 * 1024 * 1024; // Max 20MB
+}
 
 interface ChatPanelProps {
   jobId: string;
@@ -47,8 +68,11 @@ export function ChatPanel({ jobId, initialMessages, fullScreen = false }: ChatPa
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>();
+  const [selectedImage, setSelectedImage] = useState<{ file: File; base64: string; preview: string } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const currentJobIdRef = useRef<string>(jobId);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -60,7 +84,59 @@ export function ChatPanel({ jobId, initialMessages, fullScreen = false }: ChatPa
     setMessages(initialMessages || []);
     setIsLoading(false);
     setError(undefined);
+    setSelectedImage(null);
   }, [jobId, initialMessages]);
+
+  // Handle image file selection
+  const handleImageSelect = useCallback(async (file: File) => {
+    if (!isValidImageFile(file)) {
+      setError('Please select a valid image (JPEG, PNG, or WebP, max 20MB)');
+      return;
+    }
+    try {
+      const base64 = await fileToBase64(file);
+      const preview = URL.createObjectURL(file);
+      setSelectedImage({ file, base64, preview });
+      setError(undefined);
+    } catch {
+      setError('Failed to load image');
+    }
+  }, []);
+
+  // Handle file input change
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleImageSelect(file);
+    e.target.value = ''; // Reset to allow re-selecting same file
+  };
+
+  // Handle drag and drop
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) {
+      handleImageSelect(file);
+    }
+  }, [handleImageSelect]);
+
+  // Clear selected image
+  const clearImage = () => {
+    if (selectedImage?.preview) {
+      URL.revokeObjectURL(selectedImage.preview);
+    }
+    setSelectedImage(null);
+  };
 
   useEffect(() => {
     scrollToBottom();
@@ -90,19 +166,32 @@ export function ChatPanel({ jobId, initialMessages, fullScreen = false }: ChatPa
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && !selectedImage) || isLoading) return;
 
     const requestJobId = jobId;
-    const userMessage = input.trim();
+    const userMessage = input.trim() || (selectedImage ? 'Please analyse this image' : '');
+    const imageBase64 = selectedImage?.base64;
+    
     setInput('');
+    clearImage();
     setError(undefined);
 
-    const newMessages: ChatMessage[] = [...messages, { role: 'user', content: userMessage }];
+    // Include image reference in the displayed message
+    const displayMessage = selectedImage 
+      ? `${userMessage}\n\n[📎 Image attached]`
+      : userMessage;
+    
+    const newMessage: ChatMessage = { 
+      role: 'user', 
+      content: displayMessage,
+      image_base64: imageBase64
+    };
+    const newMessages: ChatMessage[] = [...messages, newMessage];
     setMessages(newMessages);
     setIsLoading(true);
 
     try {
-      const response = await sendChatMessage(requestJobId, userMessage, messages);
+      const response = await sendChatMessage(requestJobId, userMessage, messages, imageBase64);
       // Only update if still on the same video
       if (currentJobIdRef.current !== requestJobId) return;
       setMessages([...newMessages, { role: 'assistant', content: response }]);
@@ -214,13 +303,73 @@ export function ChatPanel({ jobId, initialMessages, fullScreen = false }: ChatPa
       )}
 
       {/* Input */}
-      <form onSubmit={handleSendMessage} className={`shrink-0 ${fullScreen ? 'p-4 bg-gray-50 dark:bg-gray-950' : 'p-4 border-t border-gray-200 dark:border-gray-800'}`}>
+      <form 
+        onSubmit={handleSendMessage} 
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={`shrink-0 ${fullScreen ? 'p-4 bg-gray-50 dark:bg-gray-950' : 'p-4 border-t border-gray-200 dark:border-gray-800'} ${
+          isDragging ? 'ring-2 ring-blue-500 ring-inset bg-blue-50 dark:bg-blue-950/30' : ''
+        }`}
+      >
+        {/* Image preview */}
+        {selectedImage && (
+          <div className={`mb-2 ${fullScreen ? 'max-w-3xl mx-auto' : ''}`}>
+            <div className="relative inline-block">
+              <img 
+                src={selectedImage.preview} 
+                alt="Selected" 
+                className="h-20 rounded-lg border border-gray-300 dark:border-gray-700 object-cover"
+              />
+              <button
+                type="button"
+                onClick={clearImage}
+                className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600"
+                title="Remove image"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+        
+        {/* Drag hint */}
+        {isDragging && (
+          <div className={`mb-2 text-center text-blue-600 dark:text-blue-400 text-sm ${fullScreen ? 'max-w-3xl mx-auto' : ''}`}>
+            Drop image here
+          </div>
+        )}
+        
         <div className={`flex gap-2 ${fullScreen ? 'max-w-3xl mx-auto' : ''}`}>
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          
+          {/* Image upload button */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isLoading}
+            className={`px-3 py-2 border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
+              fullScreen ? 'rounded-full' : 'rounded-lg'
+            }`}
+            title="Attach image (screenshot of slide, references, etc.)"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </button>
+          
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask about the video..."
+            placeholder={selectedImage ? "Add a message about this image..." : "Ask about the video..."}
             className={`flex-1 px-4 py-2 border border-gray-300 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 dark:text-gray-100 ${
               fullScreen ? 'rounded-full bg-white dark:bg-gray-900 shadow-sm' : 'rounded-lg bg-white dark:bg-gray-900'
             }`}
@@ -228,7 +377,7 @@ export function ChatPanel({ jobId, initialMessages, fullScreen = false }: ChatPa
           />
           <button
             type="submit"
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || (!input.trim() && !selectedImage)}
             className={`px-4 py-2 bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors ${
               fullScreen ? 'rounded-full' : 'rounded-lg'
             }`}
