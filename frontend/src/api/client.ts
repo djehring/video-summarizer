@@ -379,3 +379,14 @@ export async function getHistorySettings(): Promise<HistorySettings> {
 export function getExportHistoryUrl(): string {
   return `${API_BASE}/history/export/json`;
 }
+
+export async function clearChatHistory(jobId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/chat/${jobId}/history`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response));
+  }
+}

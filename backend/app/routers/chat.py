@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Request, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import delete
 from app.models import ChatRequest, ChatResponse, SummarizeRequest, SummarizeResponse, VideoAnalysis, VideoMetadata, References
 from app.routers.videos import jobs
 from app.services.ai_agent import AIAgent
@@ -300,3 +301,36 @@ async def chat_message(request: ChatRequest, req: Request, user: dict = Depends(
         print("[Chat] Database not configured, skipping message save")
 
     return ChatResponse(response=response)
+
+
+@router.delete("/{job_id}/history")
+async def clear_chat_history(job_id: str, req: Request, user: dict = Depends(require_auth)):
+    """Clear chat history for a video to start fresh."""
+    if not is_database_configured():
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+    try:
+        async for session in get_session():
+            # Verify the job belongs to this user
+            query = select(VideoHistory).where(
+                VideoHistory.job_id == job_id,
+                VideoHistory.user_email == user['email']
+            )
+            result = await session.execute(query)
+            history = result.scalar_one_or_none()
+            
+            if not history:
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            # Delete all chat messages for this job
+            delete_query = delete(ChatMessageDB).where(ChatMessageDB.job_id == job_id)
+            await session.execute(delete_query)
+            await session.commit()
+            
+            print(f"[Chat] Cleared chat history for job {job_id}")
+            return {"message": "Chat history cleared"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[Chat] Failed to clear chat history: {e}")
+        raise HTTPException(status_code=500, detail="Failed to clear chat history")

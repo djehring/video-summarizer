@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { generateSummary, sendChatMessage, type ChatMessage } from '../api/client';
+import { generateSummary, sendChatMessage, clearChatHistory, type ChatMessage } from '../api/client';
 
 // Helper to convert File to base64
 function fileToBase64(file: File): Promise<string> {
@@ -28,6 +28,7 @@ interface ChatPanelProps {
   jobId: string;
   initialMessages?: ChatMessage[];
   fullScreen?: boolean;
+  onChatCleared?: () => void;
 }
 
 // Copy button component
@@ -79,7 +80,7 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-export function ChatPanel({ jobId, initialMessages, fullScreen = false }: ChatPanelProps) {
+export function ChatPanel({ jobId, initialMessages, fullScreen = false, onChatCleared }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages || []);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -180,6 +181,22 @@ export function ChatPanel({ jobId, initialMessages, fullScreen = false }: ChatPa
     }
   };
 
+  const handleClearChat = async () => {
+    if (!confirm('Clear chat history for this video? This cannot be undone.')) return;
+    
+    setIsLoading(true);
+    setError(undefined);
+    try {
+      await clearChatHistory(jobId);
+      setMessages([]);
+      onChatCleared?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to clear chat');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((!input.trim() && !selectedImage) || isLoading) return;
@@ -231,19 +248,45 @@ export function ChatPanel({ jobId, initialMessages, fullScreen = false }: ChatPa
       {!fullScreen && (
         <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between shrink-0">
           <h3 className="font-semibold text-gray-800 dark:text-gray-100">AI Assistant</h3>
-          {messages.length === 0 && (
-            <button
-              onClick={handleGenerateSummary}
-              disabled={isLoading}
-              className="px-3 py-1.5 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:bg-gray-400 transition-colors"
-            >
-              {isLoading ? 'Generating...' : 'Generate Summary'}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {messages.length > 0 && (
+              <button
+                onClick={handleClearChat}
+                disabled={isLoading}
+                className="px-3 py-1.5 text-gray-600 dark:text-gray-400 text-sm font-medium rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                title="Clear chat history"
+              >
+                Clear Chat
+              </button>
+            )}
+            {messages.length === 0 && (
+              <button
+                onClick={handleGenerateSummary}
+                disabled={isLoading}
+                className="px-3 py-1.5 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:bg-gray-400 transition-colors"
+              >
+                {isLoading ? 'Generating...' : 'Generate Summary'}
+              </button>
+            )}
+          </div>
         </div>
       )}
 
       {/* Messages */}
+      {/* Clear Chat button for fullScreen mode */}
+      {fullScreen && messages.length > 0 && (
+        <div className="px-4 py-2 flex justify-end">
+          <button
+            onClick={handleClearChat}
+            disabled={isLoading}
+            className="px-3 py-1.5 text-gray-600 dark:text-gray-400 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
+            title="Clear chat history"
+          >
+            Clear Chat
+          </button>
+        </div>
+      )}
+
       <div className={`flex-1 overflow-y-auto space-y-4 min-h-0 ${fullScreen ? 'px-4 py-6' : 'p-4'}`}>
         {messages.length === 0 ? (
           <div className={`text-center text-gray-500 dark:text-gray-400 ${fullScreen ? 'mt-16' : 'mt-8'}`}>
