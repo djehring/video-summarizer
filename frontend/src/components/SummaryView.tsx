@@ -291,9 +291,29 @@ export function SummaryView({ analysis, onRefresh, isRefreshing }: SummaryViewPr
   const { video, references, transcript, llm_prompt, synopsis } = analysis;
 
   const copyPrompt = async () => {
-    await navigator.clipboard.writeText(llm_prompt);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(llm_prompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      // Fallback for iOS and other browsers with clipboard restrictions
+      const textArea = document.createElement('textarea');
+      textArea.value = llm_prompt;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-9999px';
+      textArea.style.top = '0';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        console.error('Copy failed:', err);
+      }
+      document.body.removeChild(textArea);
+    }
   };
 
   return (
