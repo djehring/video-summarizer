@@ -504,7 +504,7 @@ TEXT:
 
     def _yt_dlp_base_args(self) -> list[str]:
         """Return base yt-dlp args including cookies if available."""
-        args = ["yt-dlp"]
+        args = ["yt-dlp", "--remote-components", "ejs:github"]
         if self._cookies_path:
             args.extend(["--cookies", self._cookies_path])
         return args
