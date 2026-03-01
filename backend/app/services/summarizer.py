@@ -3,6 +3,7 @@ import re
 import json
 import os
 import tempfile
+import base64
 from pathlib import Path
 from html import unescape
 from urllib.parse import unquote
@@ -127,6 +128,16 @@ class VideoSummarizer:
 
     def _resolve_cookies_path(self) -> str | None:
         """Find a YouTube cookies file for yt-dlp authentication."""
+        # Support base64-encoded cookies via env var (for Railway/cloud platforms without secret files)
+        cookies_b64 = os.getenv("YOUTUBE_COOKIES_BASE64")
+        if cookies_b64:
+            cookies_file = self.temp_dir / "youtube_cookies.txt"
+            try:
+                cookies_file.write_bytes(base64.b64decode(cookies_b64))
+                return str(cookies_file)
+            except Exception:
+                pass
+
         cookie_path = os.getenv("YOUTUBE_COOKIES_PATH")
         if cookie_path and os.path.isfile(cookie_path):
             return cookie_path
