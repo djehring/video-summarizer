@@ -123,6 +123,18 @@ class VideoSummarizer:
         self.temp_dir.mkdir(exist_ok=True)
         self._openai = OpenAI(api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None
         self._openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        self._cookies_path = self._resolve_cookies_path()
+
+    def _resolve_cookies_path(self) -> str | None:
+        """Find a YouTube cookies file for yt-dlp authentication."""
+        cookie_path = os.getenv("YOUTUBE_COOKIES_PATH")
+        if cookie_path and os.path.isfile(cookie_path):
+            return cookie_path
+        # Check common default locations
+        for candidate in ["/app/cookies.txt", "/secrets/youtube_cookies.txt"]:
+            if os.path.isfile(candidate):
+                return candidate
+        return None
 
     def _extract_studies_ai(self, transcript: str, description: str = "", max_items: int = 8) -> list[str]:
         """Use OpenAI to extract explicit study/paper/dataset mentions when regex finds none."""
@@ -479,6 +491,13 @@ TEXT:
                 return match.group(1)
         return None
 
+    def _yt_dlp_base_args(self) -> list[str]:
+        """Return base yt-dlp args including cookies if available."""
+        args = ["yt-dlp"]
+        if self._cookies_path:
+            args.extend(["--cookies", self._cookies_path])
+        return args
+
     def download_subtitles(self, url: str) -> dict:
         """Download subtitles and video metadata using yt-dlp."""
         video_id = self.extract_video_id(url)
@@ -486,7 +505,7 @@ TEXT:
             raise ValueError(f"Could not extract video ID from URL: {url}")
 
         # Get video info
-        info_cmd = ["yt-dlp", "--dump-json", "--skip-download", url]
+        info_cmd = self._yt_dlp_base_args() + ["--dump-json", "--skip-download", url]
         result = subprocess.run(info_cmd, capture_output=True, text=True)
         if result.returncode != 0:
             raise RuntimeError(f"Failed to get video info: {result.stderr}")
@@ -495,8 +514,7 @@ TEXT:
 
         # Download subtitles
         subtitle_path = self.temp_dir / f"{video_id}"
-        sub_cmd = [
-            "yt-dlp",
+        sub_cmd = self._yt_dlp_base_args() + [
             "--write-auto-sub",
             "--sub-lang", "en",
             "--skip-download",

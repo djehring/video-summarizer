@@ -5,11 +5,15 @@ services:
       - "8000:8000"
     volumes:
       - video-data:/tmp/video-summarizer
+      # Mount cookies file for YouTube auth (create backend/cookies.txt from browser export)
+      # Comment out this line if you don't have a cookies file yet
+      # - ./backend/cookies.txt:/app/cookies.txt:ro
     env_file:
       - ./backend/.env
     environment:
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/video_summarizer
+      - YOUTUBE_COOKIES_PATH=/app/cookies.txt
     depends_on:
       db:
         condition: service_healthy

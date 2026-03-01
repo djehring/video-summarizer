@@ -53,6 +53,10 @@ frontend/dist/
 .mcp.json
 client_secret*.json
 
+# YouTube cookies (sensitive credentials)
+cookies.txt
+**/cookies.txt
+
 # Playwright
 .playwright-mcp/
 
