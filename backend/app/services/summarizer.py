@@ -5,7 +5,7 @@ from html import unescape
 from urllib.parse import unquote
 
 from youtube_transcript_api import YouTubeTranscriptApi
-from youtube_transcript_api.proxies import GenericProxyConfig
+from youtube_transcript_api.proxies import GenericProxyConfig, WebshareProxyConfig
 
 from app.models import VideoMetadata, References, VideoAnalysis, EnrichedReference, EnrichedPerson
 from openai import OpenAI
@@ -124,8 +124,20 @@ class VideoSummarizer:
         self._youtube_api_key = os.getenv("YOUTUBE_API_KEY")
 
         # Set up youtube-transcript-api with optional proxy
-        proxy_url = os.getenv("PROXY_URL")
-        proxy_config = GenericProxyConfig(https_url=proxy_url) if proxy_url else None
+        # Webshare (recommended): set WEBSHARE_USERNAME + WEBSHARE_PASSWORD
+        # Generic proxy: set PROXY_URL (e.g., http://user:pass@host:port)
+        proxy_config = None
+        ws_user = os.getenv("WEBSHARE_USERNAME")
+        ws_pass = os.getenv("WEBSHARE_PASSWORD")
+        if ws_user and ws_pass:
+            proxy_config = WebshareProxyConfig(
+                proxy_username=ws_user,
+                proxy_password=ws_pass,
+            )
+        else:
+            proxy_url = os.getenv("PROXY_URL")
+            if proxy_url:
+                proxy_config = GenericProxyConfig(https_url=proxy_url)
         self._ytt_api = YouTubeTranscriptApi(proxy_config=proxy_config)
 
     def _extract_studies_ai(self, transcript: str, description: str = "", max_items: int = 8) -> list[str]:
