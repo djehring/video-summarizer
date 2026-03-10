@@ -1,12 +1,11 @@
-import subprocess
 import re
 import json
 import os
-import tempfile
-import base64
-from pathlib import Path
 from html import unescape
 from urllib.parse import unquote
+
+from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api.proxies import GenericProxyConfig
 
 from app.models import VideoMetadata, References, VideoAnalysis, EnrichedReference, EnrichedPerson
 from openai import OpenAI
@@ -120,32 +119,14 @@ KNOWN_PEOPLE_PROFILES: dict[str, dict] = {
 
 class VideoSummarizer:
     def __init__(self):
-        self.temp_dir = Path(tempfile.gettempdir()) / "video-summarizer"
-        self.temp_dir.mkdir(exist_ok=True)
         self._openai = OpenAI(api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None
         self._openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-        self._cookies_path = self._resolve_cookies_path()
+        self._youtube_api_key = os.getenv("YOUTUBE_API_KEY")
 
-    def _resolve_cookies_path(self) -> str | None:
-        """Find a YouTube cookies file for yt-dlp authentication."""
-        # Support base64-encoded cookies via env var (for Railway/cloud platforms without secret files)
-        cookies_b64 = os.getenv("YOUTUBE_COOKIES_BASE64")
-        if cookies_b64:
-            cookies_file = self.temp_dir / "youtube_cookies.txt"
-            try:
-                cookies_file.write_bytes(base64.b64decode(cookies_b64))
-                return str(cookies_file)
-            except Exception:
-                pass
-
-        cookie_path = os.getenv("YOUTUBE_COOKIES_PATH")
-        if cookie_path and os.path.isfile(cookie_path):
-            return cookie_path
-        # Check common default locations
-        for candidate in ["/app/cookies.txt", "/secrets/youtube_cookies.txt"]:
-            if os.path.isfile(candidate):
-                return candidate
-        return None
+        # Set up youtube-transcript-api with optional proxy
+        proxy_url = os.getenv("PROXY_URL")
+        proxy_config = GenericProxyConfig(https_url=proxy_url) if proxy_url else None
+        self._ytt_api = YouTubeTranscriptApi(proxy_config=proxy_config)
 
     def _extract_studies_ai(self, transcript: str, description: str = "", max_items: int = 8) -> list[str]:
         """Use OpenAI to extract explicit study/paper/dataset mentions when regex finds none."""
@@ -502,78 +483,86 @@ TEXT:
                 return match.group(1)
         return None
 
-    def _yt_dlp_base_args(self) -> list[str]:
-        """Return base yt-dlp args including cookies if available."""
-        args = ["yt-dlp", "--remote-components", "ejs:github"]
-        if self._cookies_path:
-            args.extend(["--cookies", self._cookies_path])
-        return args
+    def _fetch_transcript(self, video_id: str) -> str:
+        """Fetch transcript using youtube-transcript-api (no cookies needed)."""
+        from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
 
-    def download_subtitles(self, url: str) -> dict:
-        """Download subtitles and video metadata using yt-dlp."""
-        video_id = self.extract_video_id(url)
-        if not video_id:
-            raise ValueError(f"Could not extract video ID from URL: {url}")
+        try:
+            fetched = self._ytt_api.fetch(video_id, languages=["en"])
+            return " ".join(snippet.text for snippet in fetched)
+        except TranscriptsDisabled:
+            raise RuntimeError(
+                "This video has no captions/subtitles available."
+            )
+        except NoTranscriptFound:
+            raise RuntimeError(
+                "No English transcript found for this video."
+            )
+        except Exception as e:
+            err = str(e)
+            if "RequestBlocked" in err or "blocked" in err.lower():
+                raise RuntimeError(
+                    "YouTube blocked the request. A proxy (PROXY_URL) may be needed for cloud deployments."
+                )
+            raise RuntimeError(f"Failed to fetch transcript: {err}")
 
-        # Get video info
-        info_cmd = self._yt_dlp_base_args() + ["--dump-json", "--skip-download", url]
-        result = subprocess.run(info_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to get video info: {result.stderr}")
+    def _parse_iso8601_duration(self, duration_str: str) -> int:
+        """Parse ISO 8601 duration (e.g., PT1H2M3S) to seconds."""
+        match = re.match(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', duration_str or '')
+        if not match:
+            return 0
+        hours = int(match.group(1) or 0)
+        minutes = int(match.group(2) or 0)
+        seconds = int(match.group(3) or 0)
+        return hours * 3600 + minutes * 60 + seconds
 
-        video_info = json.loads(result.stdout)
-
-        # Download subtitles
-        subtitle_path = self.temp_dir / f"{video_id}"
-        sub_cmd = self._yt_dlp_base_args() + [
-            "--write-auto-sub",
-            "--sub-lang", "en",
-            "--skip-download",
-            "-o", str(subtitle_path),
-            url
-        ]
-        subprocess.run(sub_cmd, capture_output=True, text=True)
-
-        # Find the subtitle file
-        vtt_files = list(self.temp_dir.glob(f"{video_id}*.vtt"))
-        if not vtt_files:
-            raise RuntimeError("No subtitle file found. Video may not have captions.")
-
-        return {
+    def _fetch_metadata(self, video_id: str, url: str) -> dict:
+        """Fetch video metadata via YouTube Data API v3 (if key available) or oEmbed fallback."""
+        metadata = {
             "video_id": video_id,
-            "title": video_info.get("title", "Unknown"),
-            "channel": video_info.get("channel", "Unknown"),
-            "duration": video_info.get("duration", 0),
-            "description": video_info.get("description", ""),
+            "title": "Unknown",
+            "channel": "Unknown",
+            "duration": 0,
+            "description": "",
             "url": url,
-            "subtitle_file": vtt_files[0]
         }
 
-    def parse_vtt(self, vtt_path: Path) -> str:
-        """Parse VTT file to extract clean transcript."""
-        with open(vtt_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+        # Try YouTube Data API v3 first (provides full metadata including description)
+        if self._youtube_api_key:
+            try:
+                api_url = (
+                    f"https://www.googleapis.com/youtube/v3/videos"
+                    f"?id={video_id}&part=snippet,contentDetails&key={self._youtube_api_key}"
+                )
+                resp = httpx.get(api_url, timeout=10)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    items = data.get("items", [])
+                    if items:
+                        snippet = items[0].get("snippet", {})
+                        content = items[0].get("contentDetails", {})
+                        metadata["title"] = snippet.get("title", "Unknown")
+                        metadata["channel"] = snippet.get("channelTitle", "Unknown")
+                        metadata["description"] = snippet.get("description", "")
+                        metadata["duration"] = self._parse_iso8601_duration(
+                            content.get("duration", "")
+                        )
+                        return metadata
+            except Exception as e:
+                print(f"[Summarizer] YouTube Data API failed, falling back to oEmbed: {e}")
 
-        lines = content.split('\n')
-        seen_text = set()
-        segments = []
+        # Fallback: oEmbed (no API key needed, but no description/duration)
+        try:
+            oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+            resp = httpx.get(oembed_url, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                metadata["title"] = data.get("title", "Unknown")
+                metadata["channel"] = data.get("author_name", "Unknown")
+        except Exception as e:
+            print(f"[Summarizer] oEmbed fallback also failed: {e}")
 
-        for line in lines:
-            if line.startswith('WEBVTT') or line.startswith('Kind:') or line.startswith('Language:'):
-                continue
-            if '-->' in line:
-                continue
-            if not line.strip() or 'align:' in line or 'position:' in line:
-                continue
-
-            clean = re.sub(r'<[^>]+>', '', line).strip()
-            clean = clean.replace('&gt;&gt;', '>>').replace('&amp;', '&')
-
-            if clean and clean not in seen_text:
-                seen_text.add(clean)
-                segments.append(clean)
-
-        return ' '.join(segments)
+        return metadata
 
     def extract_references(self, transcript: str, description: str = "") -> References:
         """Extract and categorize references from transcript and description."""
@@ -857,9 +846,13 @@ Please provide the summary in Markdown format."""
 
     def analyze(self, url: str) -> VideoAnalysis:
         """Main analysis pipeline - returns structured data."""
-        # Download and parse
-        info = self.download_subtitles(url)
-        transcript = self.parse_vtt(info['subtitle_file'])
+        video_id = self.extract_video_id(url)
+        if not video_id:
+            raise ValueError(f"Could not extract video ID from URL: {url}")
+
+        # Fetch transcript and metadata (no yt-dlp, no cookies)
+        transcript = self._fetch_transcript(video_id)
+        info = self._fetch_metadata(video_id, url)
         refs = self.extract_references(transcript, info.get('description', ''))
 
         video = VideoMetadata(

@@ -3,17 +3,16 @@ services:
     build: ./backend
     ports:
       - "8000:8000"
-    volumes:
-      - video-data:/tmp/video-summarizer
-      # Mount cookies file for YouTube auth (create backend/cookies.txt from browser export)
-      # Comment out this line if you don't have a cookies file yet
-      # - ./backend/cookies.txt:/app/cookies.txt:ro
     env_file:
       - ./backend/.env
     environment:
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/video_summarizer
-      - YOUTUBE_COOKIES_PATH=/app/cookies.txt
+      # Optional: YouTube Data API key for full metadata (description, duration)
+      # Get a free key at https://console.cloud.google.com/apis/credentials
+      # - YOUTUBE_API_KEY=your_key_here
+      # Optional: Rotating proxy for cloud deployments where YouTube blocks IPs
+      # - PROXY_URL=socks5://user:pass@proxy:port
     depends_on:
       db:
         condition: service_healthy
@@ -44,5 +43,4 @@ services:
       retries: 5
 
 volumes:
-  video-data:
   postgres-data:

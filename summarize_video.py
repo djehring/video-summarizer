@@ -8,7 +8,6 @@ Usage:
     python summarize_video.py <youtube_url> --output summary.md
 """
 
-import subprocess
 import sys
 import re
 import json
@@ -16,11 +15,24 @@ import os
 from pathlib import Path
 from datetime import datetime
 
+try:
+    from youtube_transcript_api import YouTubeTranscriptApi
+except ImportError:
+    print("Error: youtube-transcript-api not installed. Run: pip install youtube-transcript-api")
+    sys.exit(1)
+
+try:
+    import httpx
+except ImportError:
+    httpx = None
+
 class VideoSummarizer:
     def __init__(self, output_dir: str = None):
         self.output_dir = Path(output_dir) if output_dir else Path.home() / "video-summarizer"
         self.output_dir.mkdir(exist_ok=True)
-        
+        self._ytt_api = YouTubeTranscriptApi()
+        self._youtube_api_key = os.getenv("YOUTUBE_API_KEY")
+
     def extract_video_id(self, url: str) -> str:
         """Extract YouTube video ID from URL."""
         patterns = [
@@ -32,97 +44,71 @@ class VideoSummarizer:
             if match:
                 return match.group(1)
         return None
-    
-    def download_subtitles(self, url: str) -> dict:
-        """Download subtitles and video metadata using yt-dlp."""
+
+    def _parse_iso8601_duration(self, duration_str: str) -> int:
+        """Parse ISO 8601 duration (e.g., PT1H2M3S) to seconds."""
+        match = re.match(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', duration_str or '')
+        if not match:
+            return 0
+        hours = int(match.group(1) or 0)
+        minutes = int(match.group(2) or 0)
+        seconds = int(match.group(3) or 0)
+        return hours * 3600 + minutes * 60 + seconds
+
+    def fetch_video_info(self, url: str) -> dict:
+        """Fetch transcript and metadata for a YouTube video."""
         video_id = self.extract_video_id(url)
         if not video_id:
             raise ValueError(f"Could not extract video ID from URL: {url}")
-        
-        # Get video info first
-        info_cmd = [
-            "yt-dlp",
-            "--dump-json",
-            "--skip-download",
-            url
-        ]
-        
-        print("📹 Fetching video metadata...")
-        result = subprocess.run(info_cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to get video info: {result.stderr}")
-        
-        video_info = json.loads(result.stdout)
-        
-        # Download subtitles
-        subtitle_path = self.output_dir / f"{video_id}"
-        sub_cmd = [
-            "yt-dlp",
-            "--write-auto-sub",
-            "--sub-lang", "en",
-            "--skip-download",
-            "-o", str(subtitle_path),
-            url
-        ]
-        
-        print("📝 Downloading subtitles...")
-        result = subprocess.run(sub_cmd, capture_output=True, text=True)
-        
-        # Find the subtitle file
-        vtt_files = list(self.output_dir.glob(f"{video_id}*.vtt"))
-        if not vtt_files:
-            raise RuntimeError("No subtitle file found. Video may not have captions.")
-        
+
+        # Fetch transcript
+        print("Fetching transcript...")
+        fetched = self._ytt_api.fetch(video_id, languages=["en"])
+        transcript = " ".join(snippet.text for snippet in fetched)
+
+        # Fetch metadata
+        print("Fetching metadata...")
+        metadata = {"title": "Unknown", "channel": "Unknown", "duration": 0, "description": ""}
+
+        if self._youtube_api_key and httpx:
+            try:
+                api_url = (
+                    f"https://www.googleapis.com/youtube/v3/videos"
+                    f"?id={video_id}&part=snippet,contentDetails&key={self._youtube_api_key}"
+                )
+                resp = httpx.get(api_url, timeout=10)
+                if resp.status_code == 200:
+                    items = resp.json().get("items", [])
+                    if items:
+                        snippet = items[0].get("snippet", {})
+                        content = items[0].get("contentDetails", {})
+                        metadata["title"] = snippet.get("title", "Unknown")
+                        metadata["channel"] = snippet.get("channelTitle", "Unknown")
+                        metadata["description"] = snippet.get("description", "")
+                        metadata["duration"] = self._parse_iso8601_duration(content.get("duration", ""))
+            except Exception as e:
+                print(f"YouTube Data API failed, trying oEmbed: {e}")
+
+        if metadata["title"] == "Unknown" and httpx:
+            try:
+                oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+                resp = httpx.get(oembed_url, timeout=10)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    metadata["title"] = data.get("title", "Unknown")
+                    metadata["channel"] = data.get("author_name", "Unknown")
+            except Exception:
+                pass
+
         return {
             "video_id": video_id,
-            "title": video_info.get("title", "Unknown"),
-            "channel": video_info.get("channel", "Unknown"),
-            "upload_date": video_info.get("upload_date", "Unknown"),
-            "duration": video_info.get("duration", 0),
-            "description": video_info.get("description", ""),
+            "title": metadata["title"],
+            "channel": metadata["channel"],
+            "duration": metadata["duration"],
+            "description": metadata["description"],
             "url": url,
-            "subtitle_file": vtt_files[0]
+            "transcript": transcript,
         }
-    
-    def parse_vtt(self, vtt_path: Path) -> tuple[str, list[dict]]:
-        """Parse VTT file to extract clean transcript with timestamps."""
-        with open(vtt_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        lines = content.split('\n')
-        segments = []
-        current_time = None
-        seen_text = set()
-        
-        for line in lines:
-            # Skip metadata
-            if line.startswith('WEBVTT') or line.startswith('Kind:') or line.startswith('Language:'):
-                continue
-            
-            # Capture timestamp
-            if '-->' in line:
-                time_match = re.match(r'(\d{2}:\d{2}:\d{2}\.\d{3})', line)
-                if time_match:
-                    current_time = time_match.group(1)
-                continue
-            
-            # Skip empty lines and position markers
-            if not line.strip() or 'align:' in line or 'position:' in line:
-                continue
-            
-            # Clean the line
-            clean = re.sub(r'<[^>]+>', '', line).strip()
-            clean = clean.replace('&gt;&gt;', '>>').replace('&amp;', '&')
-            
-            if clean and clean not in seen_text:
-                seen_text.add(clean)
-                segments.append({
-                    "timestamp": current_time,
-                    "text": clean
-                })
-        
-        full_text = ' '.join(s['text'] for s in segments)
-        return full_text, segments
     
     def extract_references(self, transcript: str, description: str = "") -> dict:
         """Extract and categorize references from transcript and description."""
@@ -347,27 +333,24 @@ Use this prompt with Claude or another LLM to generate a detailed summary:
 
     def process_video(self, url: str, output_file: str = None) -> Path:
         """Main processing pipeline."""
-        print(f"\n🎬 Processing video: {url}\n")
-        
-        # Download subtitles and get metadata
-        video_info = self.download_subtitles(url)
-        print(f"✅ Video: {video_info['title']}")
-        print(f"✅ Channel: {video_info['channel']}")
-        print(f"✅ Duration: {self.format_duration(video_info['duration'])}")
-        
-        # Parse transcript
-        print("\n📄 Parsing transcript...")
-        transcript, segments = self.parse_vtt(video_info['subtitle_file'])
-        print(f"✅ Extracted {len(transcript):,} characters ({len(transcript.split()):,} words)")
+        print(f"\nProcessing video: {url}\n")
+
+        # Fetch transcript and metadata
+        video_info = self.fetch_video_info(url)
+        transcript = video_info["transcript"]
+        print(f"Video: {video_info['title']}")
+        print(f"Channel: {video_info['channel']}")
+        print(f"Duration: {self.format_duration(video_info['duration'])}")
+        print(f"Extracted {len(transcript):,} characters ({len(transcript.split()):,} words)")
         
         # Extract references
-        print("\n🔍 Extracting references...")
+        print("\nExtracting references...")
         references = self.extract_references(transcript, video_info.get('description', ''))
         total_refs = sum(len(v) for v in references.values())
-        print(f"✅ Found {total_refs} references across {len(references)} categories")
-        
+        print(f"Found {total_refs} references across {len(references)} categories")
+
         # Generate output
-        print("\n📝 Generating summary document...")
+        print("\nGenerating summary document...")
         output_content = self.create_output(video_info, transcript, references)
         
         # Save output
@@ -380,13 +363,13 @@ Use this prompt with Claude or another LLM to generate a detailed summary:
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write(output_content)
         
-        print(f"\n✅ Summary saved to: {output_path}")
-        
+        print(f"\nSummary saved to: {output_path}")
+
         # Also save raw transcript
         transcript_path = self.output_dir / f"{video_info['video_id']}_transcript.txt"
         with open(transcript_path, 'w', encoding='utf-8') as f:
             f.write(transcript)
-        print(f"✅ Raw transcript saved to: {transcript_path}")
+        print(f"Raw transcript saved to: {transcript_path}")
         
         return output_path
 
@@ -408,9 +391,9 @@ def main():
     
     try:
         output_path = summarizer.process_video(url, output_file)
-        print(f"\n🎉 Done! Open {output_path} to see the summary.")
+        print(f"\nDone! Open {output_path} to see the summary.")
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f"\nError: {e}")
         sys.exit(1)
 
 

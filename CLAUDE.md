@@ -59,12 +59,13 @@ video-summarizer/
 - `POST /api/chat/summarize` - Generate AI summary of video
 - `POST /api/chat/message` - Chat about the video with conversation history
 
-Jobs run in background (yt-dlp takes 10-30s). Frontend polls until complete.
+Jobs run in background. Frontend polls until complete.
 
 ## Key Implementation Details
 
-- **yt-dlp subprocess**: `--dump-json` for metadata, `--write-auto-sub` for captions
-- **VTT parsing**: Deduplicates lines via `seen_text` set, strips HTML tags
+- **Transcript extraction**: `youtube-transcript-api` library (no cookies, no yt-dlp)
+- **Metadata**: YouTube Data API v3 (`YOUTUBE_API_KEY` env var) with oEmbed fallback
+- **Proxy support**: Optional `PROXY_URL` env var for cloud deployments where YouTube blocks IPs
 - **Reference extraction**: Hardcoded regex patterns for studies, people, terms
 - **Job storage**: In-memory dict (use Redis for production)
 - **Transcript limits**: 100k chars in response, 50k in LLM prompt
