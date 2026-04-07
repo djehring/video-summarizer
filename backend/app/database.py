@@ -67,7 +67,12 @@ async def init_db():
         print("[DB] No DATABASE_URL configured, history feature disabled")
         return
 
-    engine = create_async_engine(DATABASE_URL, echo=False)
+    engine = create_async_engine(
+        DATABASE_URL,
+        echo=False,
+        pool_recycle=300,
+        pool_pre_ping=True,
+    )
     async_session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
     async with engine.begin() as conn:
