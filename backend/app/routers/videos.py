@@ -1,13 +1,14 @@
 import os
 import re
 import uuid
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Depends
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
 
 from app.models import VideoRequest, JobResponse, JobStatus, VideoAnalysis, VideoMetadata, References
 from app.services.summarizer import VideoSummarizer
 from app.services.ai_agent import AIAgent
 from app.services.exa_agent import ExaAgent
 from app.database import VideoHistory, is_database_configured
+from app.routers.auth import get_current_user as require_auth
 
 router = APIRouter()
 
@@ -82,14 +83,6 @@ def check_existing_history(video_id: str, user_email: str) -> tuple[str, VideoAn
         print(f"[DB] Error checking existing history: {e}")
 
     return None
-
-
-async def require_auth(request: Request):
-    """Check if user is authenticated."""
-    user = request.session.get('user')
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    return user
 
 
 def save_to_history_sync(job_id: str, result: VideoAnalysis, user_email: str):
